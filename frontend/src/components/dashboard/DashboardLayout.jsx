@@ -1,33 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
-import { FilterDrawer } from './FilterDrawer';
-
+import Infobar from './Infobar'
 // Section Views
 import { OverviewView } from './views/OverviewView';
-import { FYIsView } from './views/FYIsView';
-import { MapView } from './views/MapView';
-import { FeaturesView } from './views/FeaturesView';
-import { GuardsView } from './views/GuardsView';
-import { ServicesView } from './views/ServicesView';
+import { JunctionsView } from './views/JunctionsView';
+import { IncidentsView } from './views/IncidentsView';
+import { CamerasSignalsView } from './views/CamerasSignalsView';
+import { GreenCorridorsView } from './views/GreenCorridorsView';
 import { TimelineView } from './views/TimelineView';
-import { SettingsView } from './views/SettingsView';
 
-export const DashboardLayout = ({ initialTab = 'dashboard', onNavigateLanding }) => {
-  const [activeTab, setActiveTab] = useState(initialTab);
+const VALID_TABS = ['dashboard', 'junctions', 'cameras', 'incidents', 'green-corridors', 'timeline'];
+
+export const DashboardLayout = () => {
+  const { tab } = useParams();
+  const navigate = useNavigate();
+
+  // Active tab derived from URL param (defaults to 'dashboard' if absent or invalid)
+  const activeTab = tab && VALID_TABS.includes(tab) ? tab : 'dashboard';
+
   const [activeSubsection, setActiveSubsection] = useState(null);
   const [hasMultipleSubsections, setHasMultipleSubsections] = useState(false);
-  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const scrollContainerRef = useRef(null);
 
-  useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
-      setActiveSubsection(null);
-    }
-  }, [initialTab]);
-
-  // Check subsections count when tab changes
+  // When tab changes via URL navigation
   useEffect(() => {
     setActiveSubsection(null);
     if (scrollContainerRef.current) {
@@ -41,6 +38,17 @@ export const DashboardLayout = ({ initialTab = 'dashboard', onNavigateLanding })
     }
   }, [activeTab]);
 
+  // Tab navigation handler
+  const handleSelectTab = (tabId) => {
+    const targetPath = tabId === 'dashboard' ? '/dashboard' : `/dashboard/${tabId}`;
+    navigate(targetPath);
+  };
+
+  // Back to Landing page handler
+  const handleNavigateLanding = () => {
+    navigate('/');
+  };
+
   // Dynamic Subsection Scroll Spy
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
@@ -53,7 +61,6 @@ export const DashboardLayout = ({ initialTab = 'dashboard', onNavigateLanding })
       return;
     }
 
-    // If at the very top, clear subsection
     if (scrollTop < 30) {
       setActiveSubsection(null);
       return;
@@ -76,58 +83,48 @@ export const DashboardLayout = ({ initialTab = 'dashboard', onNavigateLanding })
   const renderActiveView = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <OverviewView onNavigateTab={(tab) => setActiveTab(tab)} />;
-      case 'fyis':
-        return <FYIsView />;
-      case 'map':
-        return <MapView />;
-      case 'features':
-        return <FeaturesView />;
-      case 'guards':
-        return <GuardsView />;
-      case 'services':
-        return <ServicesView />;
+        return <OverviewView />;
+      case 'junctions':
+        return <JunctionsView onNavigateTab={(t) => handleSelectTab(t)} />;
+      case 'cameras':
+        return <CamerasSignalsView />;
+      case 'incidents':
+        return <IncidentsView />;
+      case 'green-corridors':
+        return <GreenCorridorsView />;
       case 'timeline':
         return <TimelineView />;
-      case 'settings':
-        return <SettingsView />;
       default:
-        return <OverviewView onNavigateTab={(tab) => setActiveTab(tab)} />;
+        return <OverviewView />;
     }
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-warm)' }}>
-      {/* 1. Left Sidebar Navigation */}
-      <Sidebar
-        activeTab={activeTab}
-        onSelectTab={(tabId) => setActiveTab(tabId)}
-        onNavigateLanding={onNavigateLanding}
-      />
-
-      {/* 2. Main Content Canvas with Scroll Spy */}
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100vh', overflowY: 'auto' }}
-      >
-        <Topbar
+    <div className='bg-(--color-1)'>
+      <Infobar />
+      <div className="flex w-full h-screen overflow-hidden">
+        <Sidebar
           activeTab={activeTab}
-          activeSubsection={activeSubsection}
-          hasMultipleSubsections={hasMultipleSubsections}
-          onToggleFilters={() => setIsFilterDrawerOpen(!isFilterDrawerOpen)}
+          onSelectTab={handleSelectTab}
+          onNavigateLanding={handleNavigateLanding}
         />
-
-        <main style={{ padding: '24px 28px 60px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
-          {renderActiveView()}
-        </main>
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 flex flex-col h-full overflow-y-auto bg-(--color-4) text-(--color-1) rounded-tl-sm"
+        >
+          <Topbar
+            activeTab={activeTab}
+            activeSubsection={activeSubsection}
+            hasMultipleSubsections={hasMultipleSubsections}
+          />
+          <main className="w-full mx-auto p-4">
+            {renderActiveView()}
+          </main>
+        </div>
       </div>
-
-      {/* 3. Right Filter Drawer */}
-      <FilterDrawer
-        isOpen={isFilterDrawerOpen}
-        onClose={() => setIsFilterDrawerOpen(false)}
-      />
     </div>
   );
 };
+
+export default DashboardLayout;

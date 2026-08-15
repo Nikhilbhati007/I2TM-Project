@@ -1,9 +1,20 @@
 import React from 'react';
-import { AlertOctagon, ShieldAlert, Siren, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertOctagon, ShieldAlert, Siren, RotateCcw, ArrowRight } from 'lucide-react';
 import { useTraffic } from '../../context/TrafficContext';
 
 export const AccidentHazardBanner = ({ onNavigateGuards }) => {
-  const { emergency, triggerEmergencyCorridor, resetEmergencyCorridor } = useTraffic();
+  const navigate = useNavigate();
+  const { activeCorridors, triggerEmergencyCorridor, removeEmergencyCorridor } = useTraffic();
+  const emergency = activeCorridors && activeCorridors.length > 0 ? activeCorridors[0] : { active: false };
+
+  const handleInspectGuards = () => {
+    if (onNavigateGuards) {
+      onNavigateGuards();
+    } else {
+      navigate('/dashboard/guards');
+    }
+  };
 
   return (
     <div
@@ -91,7 +102,7 @@ export const AccidentHazardBanner = ({ onNavigateGuards }) => {
       {/* Right: Quick Action Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button
-          onClick={onNavigateGuards}
+          onClick={handleInspectGuards}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -111,53 +122,12 @@ export const AccidentHazardBanner = ({ onNavigateGuards }) => {
           onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
           <ShieldAlert size={16} color="#DC2626" />
-          <span>Inspect Triage Guard →</span>
+          <span>Inspect Triage Guard</span>
+          <ArrowRight size={14} color="#DC2626" />
         </button>
-
-        {emergency.active ? (
-          <button
-            onClick={resetEmergencyCorridor}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              backgroundColor: '#FEF2F2',
-              color: '#991B1B',
-              fontWeight: '800',
-              fontSize: '13px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid #FCA5A5',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-            }}
-          >
-            <RotateCcw size={15} color="#991B1B" />
-            <span>Reset Corridor ({emergency.countdownSeconds}s)</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => triggerEmergencyCorridor('CRITICAL')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              backgroundColor: '#DC2626',
-              color: '#FFFFFF',
-              fontWeight: '800',
-              fontSize: '13px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid #F87171',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(220, 38, 38, 0.5)'
-            }}
-          >
-            <Siren size={16} />
-            <span>Simulate Green Corridor</span>
-          </button>
-        )}
       </div>
     </div>
   );
 };
+
+export default AccidentHazardBanner;

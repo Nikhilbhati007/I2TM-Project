@@ -1,197 +1,193 @@
-import React from 'react';
-import { Radio, Filter } from 'lucide-react';
-import { useTraffic } from '../../context/TrafficContext';
+import React, { useState, useRef, useEffect } from 'react';
+import { Radio, Search, MapPin, Crosshair, ChevronDown, Check, Sliders } from 'lucide-react';
+import { useTraffic, INDIAN_CITIES } from '../../context/TrafficContext';
 import { Button } from '../common/Button';
-import { Badge } from '../common/Badge';
 
-const TAB_TITLES = {
-  dashboard: 'Command Overview',
-  fyis: 'FYIs & Alerts',
-  map: 'Grid & Corridor Map',
-  features: 'Features & Controls',
-  services: 'AI Services & Telemetry',
-  guards: 'Guards & Emergency Triage',
-  timeline: 'Timeline & Event Log',
-  settings: 'System & Junction Settings'
-};
-
-export const Topbar = ({ 
-  activeTab = 'dashboard', 
-  activeSubsection = null, 
+export const Topbar = ({
+  activeTab = 'dashboard',
+  activeSubsection = null,
   hasMultipleSubsections = false,
-  onToggleFilters 
+  onToggleFilters
 }) => {
   const {
-    environment,
-    emergency,
+    activeCity,
+    handleSelectCity,
+    handleSearchCityQuery,
+    detectUserLocation,
+    isDetectingLocation,
+    userLocationDetected,
+    activeCorridors,
+    triggerEmergencyCorridor,
     isLiveSimulating,
     setIsLiveSimulating,
-    activeFilterCount,
-    selectedJunction
+    activeFilterCount
   } = useTraffic();
 
-  const sectionName = TAB_TITLES[activeTab] || 'Command Overview';
+  // City Search & Picker Dropdown State
+  const [isCitySearchOpen, setIsCitySearchOpen] = useState(false);
+  const [citySearchInput, setCitySearchInput] = useState('');
+  const [isSearchingCustom, setIsSearchingCustom] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsCitySearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const emergency = activeCorridors && activeCorridors.length > 0 ? activeCorridors[0] : { active: false };
+
+  // Filtered Cities list based on input query
+  const filteredCities = INDIAN_CITIES.filter((c) =>
+    c.name.toLowerCase().includes(citySearchInput.toLowerCase()) ||
+    c.state.toLowerCase().includes(citySearchInput.toLowerCase())
+  );
+
+  const handleSelectCityItem = (cityObj) => {
+    handleSelectCity(cityObj);
+    setIsCitySearchOpen(false);
+    setCitySearchInput('');
+  };
+
+  const handleSearchSubmit = async (e) => {
+    e.preventDefault();
+    if (!citySearchInput.trim()) return;
+    setIsSearchingCustom(true);
+    await handleSearchCityQuery(citySearchInput);
+    setIsSearchingCustom(false);
+    setIsCitySearchOpen(false);
+    setCitySearchInput('');
+  };
 
   return (
-    <header
-      style={{
-        height: '76px',
-        minHeight: '76px',
-        maxHeight: '76px',
-        padding: '0 28px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'nowrap',
-        borderBottom: '1px solid var(--border-warm)',
-        backgroundColor: 'var(--bg-surface)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        boxShadow: '0 2px 8px rgba(78, 45, 20, 0.04)',
-        boxSizing: 'border-box'
-      }}
-    >
-      {/* Left: Brand Tag + Main Section Title */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-        <div>
-          {/* Top Brand Subtitle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', lineHeight: 1, marginBottom: '4px' }}>
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: '900',
-                letterSpacing: '0.1em',
-                color: 'var(--primary-orange-dark)',
-                textTransform: 'uppercase'
+    <header className="bg-(--color-4) w-full h-fit px-3 py-2 flex items-center justify-between sticky top-0 z-10">
+      <div className="flex items-center gap-4">
+        <div ref={dropdownRef} className="relative w-70">
+          <form
+            onSubmit={handleSearchSubmit}
+            className="flex items-center gap-1.5 px-3 bg-(--color-5) border border-(--color-3) focus-within:border-(--color-2) rounded-sm duration-300 ease-in-out"
+          >
+            <Search size={15} color="#272727" className="shrink-0" />
+            <input
+              type="text"
+              placeholder="Search City"
+              value={citySearchInput}
+              onChange={(e) => {
+                setCitySearchInput(e.target.value);
+                if (!isCitySearchOpen) setIsCitySearchOpen(true);
               }}
+              onFocus={() => setIsCitySearchOpen(true)}
+              className="p-1.5 w-full text-[13px] outline-none flex grow"
+            />
+            <button
+              type="button"
+              onClick={() => setIsCitySearchOpen(!isCitySearchOpen)}
+              className="text-(--color-2) hover:text-(--color-1)"
             >
-              SARATHI · सारथी
-            </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>•</span>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
-              {selectedJunction}
-            </span>
-          </div>
-
-          {/* Main Section Title + Optional Subsection Breadcrumb inline */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', lineHeight: 1 }}>
-            <h1
-              style={{
-                fontSize: '22px',
-                fontWeight: '900',
-                color: 'var(--text-main)',
-                letterSpacing: '-0.02em',
-                fontFamily: 'var(--font-heading)',
-                margin: 0,
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {sectionName}
-            </h1>
-
-            {hasMultipleSubsections && activeSubsection && (
-              <span
-                className="view-fade-in"
-                style={{
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  color: 'var(--primary-orange-dark)',
-                  backgroundColor: 'var(--primary-orange-soft)',
-                  padding: '2px 8px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid #FED7AA',
-                  whiteSpace: 'nowrap'
+              <ChevronDown size={14} className={`transition-transform duration-200 ${isCitySearchOpen && 'rotate-180'}`} />
+            </button>
+          </form>
+          {isCitySearchOpen && (
+            <div className="absolute top-[calc(100%+8px)] left-0 w-90 bg-(--color-5) rounded-md border border-(--color-3) z-100 p-3 animate-[fadeIn_0.18s_ease_forwards]">
+              <button
+                type="button"
+                onClick={() => {
+                  detectUserLocation();
+                  setIsCitySearchOpen(false);
                 }}
+                className="flex items-center justify-center gap-2 w-full px-3 py-2.5 bg-(--color-4) text-(--color-1) text-xs rounded-full mb-4 transition-all duration-150 ease-in-out hover:opacity-80 cursor-pointer"
               >
-                {activeSubsection}
+                <Crosshair size={15} color="#272727" className={isDetectingLocation ? 'animate-spin' : ''} />
+                <span>{isDetectingLocation ? 'Detecting GPS location...' : 'Auto-Detect My Location'}</span>
+              </button>
+
+              <div className="text-xs mb-2">
+                Cities ({filteredCities.length})
+              </div>
+
+              <div className="max-h-60 overflow-y-auto space-y-1">
+                {filteredCities.length > 0 ? (
+                  filteredCities.map((city) => {
+                    const isSelected = activeCity?.id === city.id;
+                    return (
+                      <div
+                        key={city.id}
+                        onClick={() => handleSelectCityItem(city)}
+                        className={`flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-120 ease-in-out bg-(--color-4) ${
+                          isSelected
+                            ? ' border border-(--color-3)'
+                            : 'border border-transparent hover:opacity-75'
+                        }`}
+                      >
+                        <div>
+                          <div className={`text-sm ${isSelected && 'text-(--color-6)'}`}>
+                            {city.name}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {city.state} • {city.junctions.length} Active Nodes
+                          </div>
+                        </div>
+
+                        {isSelected && <Check size={16} color="#1629d2" />}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-3 text-center text-xs text-slate-500">
+                    No matching cities found. Press Enter to search custom location.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <MapPin size={16} color="#0d0d0d" />
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs">
+              {activeCity?.name || 'No location'}
+            </span>
+            {userLocationDetected && (
+              <span className="text-[10px] bg-(--color-3) text-(--color-2) px-2 pt-0.5 pb-px rounded-full">
+                GPS
               </span>
             )}
           </div>
         </div>
       </div>
-
-      {/* Right Controls: Status Badges + Clean Action Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-        {/* Collision Radar Status Badge */}
+      <div className="flex items-center gap-2.5 shrink-0">
         <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '5px 10px',
-            borderRadius: 'var(--radius-full)',
-            backgroundColor: emergency.active ? '#FEF2F2' : '#F0FDF4',
-            border: emergency.active ? '1px solid #FCA5A5' : '1px solid #BBF7D0',
-            whiteSpace: 'nowrap'
-          }}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-nowrap ${
+            emergency.active ? 'bg-red-50' : 'bg-green-50'
+          }`}
         >
           <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              backgroundColor: emergency.active ? '#DC2626' : '#16A34A'
-            }}
-            className={emergency.active ? 'animate-pulse-slow' : ''}
+            className={`w-2 h-2 rounded-full ${
+              emergency.active ? 'bg-red-600 animate-pulse-slow' : 'bg-green-600'
+            }`}
           />
           <span
-            style={{
-              fontSize: '11px',
-              fontWeight: '800',
-              color: emergency.active ? '#991B1B' : '#166534',
-              letterSpacing: '0.02em'
-            }}
+            className={`text-xs ${
+              emergency.active ? 'text-red-800' : 'text-green-800'
+            }`}
           >
-            {emergency.active ? `EMERGENCY (${emergency.countdownSeconds}s)` : 'RADAR: LOW RISK'}
+            {emergency.active ? `Emergency (${emergency.countdownSeconds}s)` : 'Low Risk'}
           </span>
         </div>
-
-        {/* Live Simulation Engine Toggle */}
         <Button
           variant="secondary"
           size="sm"
           icon={Radio}
           onClick={() => setIsLiveSimulating(!isLiveSimulating)}
-          style={{
-            color: isLiveSimulating ? 'var(--status-healthy)' : 'var(--text-muted)',
-            whiteSpace: 'nowrap',
-            padding: '6px 12px'
-          }}
+          className="whitespace-nowrap px-3 py-1.5"
         >
           {isLiveSimulating ? 'Live Feeds' : 'Paused'}
         </Button>
-
-        {/* Filter Toggle Button */}
-        <Button
-          variant="filter"
-          size="sm"
-          hasChevron
-          onClick={onToggleFilters}
-          style={{ whiteSpace: 'nowrap', padding: '6px 12px' }}
-        >
-          Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
-        </Button>
-
-        {/* Environment Tag */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            padding: '5px 10px',
-            backgroundColor: 'var(--bg-surface-warm)',
-            border: '1px solid var(--border-warm)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '11px',
-            fontWeight: '600',
-            color: 'var(--text-body)',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          <span style={{ color: 'var(--text-muted)' }}>Env:</span>
-          <span style={{ color: 'var(--text-main)', fontWeight: '700' }}>{environment}</span>
-        </div>
       </div>
     </header>
   );
