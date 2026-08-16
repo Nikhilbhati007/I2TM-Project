@@ -21,6 +21,9 @@ export const TrafficProvider = ({ children }) => {
   const [environment, setEnvironment] = useState('Prod');
   const [isLiveSimulating, setIsLiveSimulating] = useState(true);
 
+  // Cross-view mapping
+  const [activeMapElementId, setActiveMapElementId] = useState(null);
+
   // 4 Junction Approaches (Dynamic calculation based on density)
   const [approaches, setApproaches] = useState({
     North: { name: 'North Approach Corridor', vehicleCount: 42, capacity: 50, densityPct: 84.0, status: 'HIGH', currentLight: 'RED', greenSec: 35, avgSpeed: 18.2 },
@@ -318,7 +321,9 @@ export const TrafficProvider = ({ children }) => {
         showSignals,
         setShowSignals,
         showCorridor,
-        setShowCorridor
+        setShowCorridor,
+        activeMapElementId,
+        setActiveMapElementId
       }}
     >
       {children}

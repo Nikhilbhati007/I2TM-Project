@@ -154,10 +154,13 @@ export const OverviewView = () => {
     showCorridor,
     setShowCorridor,
     clearAllFilters,
-    alerts
+    alerts,
+    activeMapElementId,
+    setActiveMapElementId
   } = useTraffic();
 
   const [selectedElement, setSelectedElement] = useState(null);
+  const [isTargeting, setIsTargeting] = useState(false);
 
   // Map instance ref for smooth animated pan & zoom
   const mapRef = useRef(null);
@@ -416,6 +419,40 @@ export const OverviewView = () => {
       mapRef.current.setZoom(15);
     }
   }, [selectedJunction, junctionNodes]);
+
+  // Listen for activeMapElementId to show device on map
+  useEffect(() => {
+    if (activeMapElementId && mapRef.current) {
+      // Scroll to the map view area
+      const mapContainer = document.getElementById('map-radar-container');
+      if (mapContainer) {
+        mapContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      // Show targeting overlay
+      setIsTargeting(true);
+
+      // Simulate connection/targeting time
+      setTimeout(() => {
+        setIsTargeting(false);
+        const cam = cameraZones.find(c => c.id === activeMapElementId);
+        if (cam) {
+          setSelectedElement({ type: 'camera', data: cam });
+          mapRef.current.panTo(cam.center);
+          mapRef.current.setZoom(18);
+          setActiveMapElementId(null);
+          return;
+        }
+        const sig = signalNodes.find(s => s.id === activeMapElementId);
+        if (sig) {
+          setSelectedElement({ type: 'signal', data: sig });
+          mapRef.current.panTo(sig.position);
+          mapRef.current.setZoom(18);
+          setActiveMapElementId(null);
+        }
+      }, 1000);
+    }
+  }, [activeMapElementId, cameraZones, signalNodes]);
 
   // Origin & Destination coordinates on real road network
   const ambulancePos = useMemo(() => ({ lat: centerLat - 0.0080, lng: centerLng - 0.0012 }), [centerLat, centerLng]);
@@ -706,8 +743,19 @@ export const OverviewView = () => {
         );
       })()}
 
-      <div className="flex gap-6 w-full">
-        <div className="flex-1 min-w-1/2 relative overflow-hidden rounded-sm">
+      <div className="flex gap-6 w-full" id="map-radar-container">
+        <div className="flex-1 min-w-1/2 relative overflow-hidden rounded-sm border border-(--color-3)">
+          {isTargeting && (
+            <div className="absolute inset-0 z-50 bg-[#0f172a]/70 backdrop-blur-md flex flex-col items-center justify-center">
+              <div className="w-10 h-10 border-4 border-[#3b82f6]/20 border-t-[#3b82f6] rounded-full animate-spin"></div>
+              <div className="mt-4 text-(--color-5)">
+                LOCATING DEVICE
+              </div>
+              <div className="mt-1 text-sm text-(--color-3)">
+                Please wait while loading location...
+              </div>
+            </div>
+          )}
           {isLoaded ? (
             <GoogleMap
               mapContainerStyle={MAP_CONTAINER_STYLE}

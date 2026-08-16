@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Camera, Zap, Search, Layers, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Camera, Zap, Search, Layers, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import { useTraffic } from '../../../context/TrafficContext';
 import { INDIAN_CITIES } from '../../../data/dummyData';
 import { Dropdown } from '../../common/Dropdown';
 
 export const CamerasSignalsView = () => {
-  const { selectedJunction, approaches } = useTraffic();
+  const { selectedJunction, approaches, setSelectedJunction, setActiveMapElementId } = useTraffic();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const pageParam = searchParams.get('page') || '1';
   const currentPage = Math.max(1, parseInt(pageParam, 10) || 1);
@@ -22,15 +23,15 @@ export const CamerasSignalsView = () => {
     const list = [];
     INDIAN_CITIES.forEach((city) => {
       (city.junctions || [`${city.name} Central Hub`]).forEach((jName, jIdx) => {
-        const camN = { id: `${city.id}-CAM-${jIdx + 1}-N`, deviceType: 'CAMERA', name: `${jName} North CCTV`, cityName: city.name, junction: jName, approach: 'North Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Dynamic Density', vehicles: Math.floor(Math.random() * 35) + 15, densityPct: Math.floor(Math.random() * 45) + 45, status: 'ONLINE' };
-        const camE = { id: `${city.id}-CAM-${jIdx + 1}-E`, deviceType: 'CAMERA', name: `${jName} East CCTV`, cityName: city.name, junction: jName, approach: 'East Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Swerve Risk AI', vehicles: Math.floor(Math.random() * 40) + 20, densityPct: Math.floor(Math.random() * 40) + 55, status: 'ONLINE' };
-        const camW = { id: `${city.id}-CAM-${jIdx + 1}-W`, deviceType: 'CAMERA', name: `${jName} West CCTV`, cityName: city.name, junction: jName, approach: 'West Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Multi-Class', vehicles: Math.floor(Math.random() * 25) + 10, densityPct: Math.floor(Math.random() * 35) + 30, status: 'ONLINE' };
-        const camS = { id: `${city.id}-CAM-${jIdx + 1}-S`, deviceType: 'CAMERA', name: `${jName} South CCTV`, cityName: city.name, junction: jName, approach: 'South Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Emergency Triage', vehicles: Math.floor(Math.random() * 30) + 15, densityPct: Math.floor(Math.random() * 35) + 40, status: 'ONLINE' };
+        const camN = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-N`, deviceType: 'CAMERA', name: `${jName} North CCTV`, cityName: city.name, junction: jName, approach: 'North Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Dynamic Density', vehicles: Math.floor(Math.random() * 35) + 15, densityPct: Math.floor(Math.random() * 45) + 45, status: 'ONLINE' };
+        const camE = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-E`, deviceType: 'CAMERA', name: `${jName} East CCTV`, cityName: city.name, junction: jName, approach: 'East Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Swerve Risk AI', vehicles: Math.floor(Math.random() * 40) + 20, densityPct: Math.floor(Math.random() * 40) + 55, status: 'ONLINE' };
+        const camW = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-W`, deviceType: 'CAMERA', name: `${jName} West CCTV`, cityName: city.name, junction: jName, approach: 'West Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Multi-Class', vehicles: Math.floor(Math.random() * 25) + 10, densityPct: Math.floor(Math.random() * 35) + 30, status: 'ONLINE' };
+        const camS = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-S`, deviceType: 'CAMERA', name: `${jName} South CCTV`, cityName: city.name, junction: jName, approach: 'South Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Emergency Triage', vehicles: Math.floor(Math.random() * 30) + 15, densityPct: Math.floor(Math.random() * 35) + 40, status: 'ONLINE' };
 
-        const sigN = { id: `${city.id}-SIG-${jIdx + 1}-N`, deviceType: 'SIGNAL', name: `${jName} North Traffic Light`, cityName: city.name, junction: jName, approach: 'North Approach', light: jName === selectedJunction ? approaches.North.currentLight : (jIdx % 2 === 0 ? 'RED' : 'GREEN'), greenSec: jName === selectedJunction ? approaches.North.greenSec : (jIdx % 2 === 0 ? 25 : 45), densityPct: jName === selectedJunction ? approaches.North.densityPct : 75, vehicles: jName === selectedJunction ? approaches.North.vehicleCount : 38, avgSpeed: '18.2 km/h', status: 'ONLINE' };
-        const sigE = { id: `${city.id}-SIG-${jIdx + 1}-E`, deviceType: 'SIGNAL', name: `${jName} East Traffic Light`, cityName: city.name, junction: jName, approach: 'East Approach', light: jName === selectedJunction ? approaches.East.currentLight : (jIdx % 2 === 0 ? 'GREEN' : 'RED'), greenSec: jName === selectedJunction ? approaches.East.greenSec : (jIdx % 2 === 0 ? 55 : 20), densityPct: jName === selectedJunction ? approaches.East.densityPct : 92, vehicles: jName === selectedJunction ? approaches.East.vehicleCount : 48, avgSpeed: '9.5 km/h', status: 'ONLINE' };
-        const sigW = { id: `${city.id}-SIG-${jIdx + 1}-W`, deviceType: 'SIGNAL', name: `${jName} West Traffic Light`, cityName: city.name, junction: jName, approach: 'West Approach', light: jName === selectedJunction ? approaches.West.currentLight : 'RED', greenSec: jName === selectedJunction ? approaches.West.greenSec : 15, densityPct: jName === selectedJunction ? approaches.West.densityPct : 28, vehicles: jName === selectedJunction ? approaches.West.vehicleCount : 14, avgSpeed: '38.0 km/h', status: 'ONLINE' };
-        const sigS = { id: `${city.id}-SIG-${jIdx + 1}-S`, deviceType: 'SIGNAL', name: `${jName} South Traffic Light`, cityName: city.name, junction: jName, approach: 'South Approach', light: jName === selectedJunction ? approaches.South.currentLight : 'RED', greenSec: jName === selectedJunction ? approaches.South.greenSec : 25, densityPct: jName === selectedJunction ? approaches.South.densityPct : 45, vehicles: jName === selectedJunction ? approaches.South.vehicleCount : 22, avgSpeed: '34.0 km/h', status: 'ONLINE' };
+        const sigN = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-N`, deviceType: 'SIGNAL', name: `${jName} North Traffic Light`, cityName: city.name, junction: jName, approach: 'North Approach', light: jName === selectedJunction ? approaches.North.currentLight : (jIdx % 2 === 0 ? 'RED' : 'GREEN'), greenSec: jName === selectedJunction ? approaches.North.greenSec : (jIdx % 2 === 0 ? 25 : 45), densityPct: jName === selectedJunction ? approaches.North.densityPct : 75, vehicles: jName === selectedJunction ? approaches.North.vehicleCount : 38, avgSpeed: '18.2 km/h', status: 'ONLINE' };
+        const sigE = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-E`, deviceType: 'SIGNAL', name: `${jName} East Traffic Light`, cityName: city.name, junction: jName, approach: 'East Approach', light: jName === selectedJunction ? approaches.East.currentLight : (jIdx % 2 === 0 ? 'GREEN' : 'RED'), greenSec: jName === selectedJunction ? approaches.East.greenSec : (jIdx % 2 === 0 ? 55 : 20), densityPct: jName === selectedJunction ? approaches.East.densityPct : 92, vehicles: jName === selectedJunction ? approaches.East.vehicleCount : 48, avgSpeed: '9.5 km/h', status: 'ONLINE' };
+        const sigW = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-W`, deviceType: 'SIGNAL', name: `${jName} West Traffic Light`, cityName: city.name, junction: jName, approach: 'West Approach', light: jName === selectedJunction ? approaches.West.currentLight : 'RED', greenSec: jName === selectedJunction ? approaches.West.greenSec : 15, densityPct: jName === selectedJunction ? approaches.West.densityPct : 28, vehicles: jName === selectedJunction ? approaches.West.vehicleCount : 14, avgSpeed: '38.0 km/h', status: 'ONLINE' };
+        const sigS = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-S`, deviceType: 'SIGNAL', name: `${jName} South Traffic Light`, cityName: city.name, junction: jName, approach: 'South Approach', light: jName === selectedJunction ? approaches.South.currentLight : 'RED', greenSec: jName === selectedJunction ? approaches.South.greenSec : 25, densityPct: jName === selectedJunction ? approaches.South.densityPct : 45, vehicles: jName === selectedJunction ? approaches.South.vehicleCount : 22, avgSpeed: '34.0 km/h', status: 'ONLINE' };
 
         list.push(camN, sigN, camE, sigE, camW, sigW, camS, sigS);
       });
@@ -174,8 +175,22 @@ export const CamerasSignalsView = () => {
                   <span className="text-xs text-(--color-2)">{item.densityPct}% Load</span>
                 </div>
                 <div>
-                  <div className="text-sm">{item.name}</div>
-                  <div className="mt-2 text-xs text-(--color-2)">{item.junction} • {item.cityName}</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">{item.name}</div>
+                    <button
+                      onClick={() => {
+                        setSelectedJunction(item.junction);
+                        setActiveMapElementId(item.id);
+                        navigate('/dashboard');
+                      }}
+                      className="text-(--color-6) hover:bg-(--color-6)/10 p-1 rounded-sm transition-colors cursor-pointer flex items-center gap-1 text-xs"
+                      title="Show on map"
+                    >
+                      <MapPin size={14} />
+                      <span className="hidden sm:inline">Show on Map</span>
+                    </button>
+                  </div>
+                  <div className="mt-1 text-xs text-(--color-2)">{item.junction} • {item.cityName}</div>
                 </div>
                 <div className="bg-(--color-4) rounded-sm p-2.5 text-xs space-y-2">
                   {isCam ? (
