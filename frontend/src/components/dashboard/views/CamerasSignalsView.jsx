@@ -172,24 +172,21 @@ export const CamerasSignalsView = () => {
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-(--color-2)">{item.densityPct}% Load</span>
+                  <button
+                    onClick={() => {
+                      setSelectedJunction(item.junction);
+                      setActiveMapElementId(item.id);
+                      navigate('/dashboard');
+                    }}
+                    className="text-(--color-6) hover:bg-(--color-6)/10 p-1 rounded-sm transition-colors cursor-pointer flex items-center gap-1 text-xs"
+                    title="Show on map"
+                  >
+                    <MapPin size={14} />
+                    <span className="hidden sm:inline text-nowrap">Show on Map</span>
+                  </button>
                 </div>
                 <div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">{item.name}</div>
-                    <button
-                      onClick={() => {
-                        setSelectedJunction(item.junction);
-                        setActiveMapElementId(item.id);
-                        navigate('/dashboard');
-                      }}
-                      className="text-(--color-6) hover:bg-(--color-6)/10 p-1 rounded-sm transition-colors cursor-pointer flex items-center gap-1 text-xs"
-                      title="Show on map"
-                    >
-                      <MapPin size={14} />
-                      <span className="hidden sm:inline">Show on Map</span>
-                    </button>
-                  </div>
+                  <div className="text-sm font-semibold pr-2">{item.name}</div>
                   <div className="mt-1 text-xs text-(--color-2)">{item.junction} • {item.cityName}</div>
                 </div>
                 <div className="bg-(--color-4) rounded-sm p-2.5 text-xs space-y-2">
@@ -211,6 +208,10 @@ export const CamerasSignalsView = () => {
                         <span className="text-(--color-2)">Vehicles:</span>
                         <span>{item.vehicles} units</span>
                       </div>
+                      <div className="flex justify-between">
+                        <span className="text-(--color-2)">Density Load:</span>
+                        <span>{item.densityPct}%</span>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -229,6 +230,10 @@ export const CamerasSignalsView = () => {
                       <div className="flex justify-between">
                         <span className="text-(--color-2)">Avg Speed:</span>
                         <span>{item.avgSpeed}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-(--color-2)">Density Load:</span>
+                        <span>{item.densityPct}%</span>
                       </div>
                     </>
                   )}

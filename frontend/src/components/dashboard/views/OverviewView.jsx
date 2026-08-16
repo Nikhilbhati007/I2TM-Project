@@ -749,7 +749,7 @@ export const OverviewView = () => {
             <div className="absolute inset-0 z-50 bg-[#0f172a]/70 backdrop-blur-md flex flex-col items-center justify-center">
               <div className="w-10 h-10 border-4 border-[#3b82f6]/20 border-t-[#3b82f6] rounded-full animate-spin"></div>
               <div className="mt-4 text-(--color-5)">
-                LOCATING DEVICE
+                Locating Device
               </div>
               <div className="mt-1 text-sm text-(--color-3)">
                 Please wait while loading location...
