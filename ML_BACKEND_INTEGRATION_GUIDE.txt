@@ -1,0 +1,409 @@
+====================================================================================================
+SARATHI (सारथी) - STANDALONE ML BACKEND MERGE & INTEGRATION BLUEPRINT
+====================================================================================================
+This document provides the complete architectural map, file locations, API contracts, JSON schemas,
+and step-by-step instructions to merge your standalone Python ML backend into the SARATHI project.
+
+----------------------------------------------------------------------------------------------------
+TABLE OF CONTENTS
+----------------------------------------------------------------------------------------------------
+1. SYSTEM ARCHITECTURE & DATA FLOW OVERVIEW
+2. DIRECTORY STRUCTURE & WHERE TO DROP YOUR ML FILES
+3. THE 5 CORE ML MODELS: CONTRACTS, ENDPOINTS & SCHEMAS
+   3.1 Model 1: 4-Approach Traffic Density Detector
+   3.2 Model 2: Risky Driving & Lane Cut/Swerve AI Trajectory Interceptor
+   3.3 Model 3: Patient-Severity Emergency Triage & Green Corridor Engine
+   3.4 Model 4: Multi-Junction Arterial Route Congestion Predictor
+   3.5 Model 5: Dynamic Density-Weighted Signal Phase Optimizer
+4. NODE.JS WEB API INTEGRATION POINTS (backend/web/)
+5. FRONTEND INTEGRATION POINTS & STATE HOOKS (frontend/src/)
+6. ENVIRONMENT VARIABLES & NETWORK CONFIGURATION
+7. STEP-BY-STEP MERGE & VERIFICATION WORKFLOW
+8. CHECKLIST BEFORE GOING LIVE
+
+====================================================================================================
+1. SYSTEM ARCHITECTURE & DATA FLOW OVERVIEW
+====================================================================================================
+
+      [ CCTV Cameras / Video Streams / GPS Feeds / Datasets ]
+                                 │
+                                 ▼
+         ┌─────────────────────────────────────────────────┐
+         │       PYTHON ML BACKEND (FastAPI / PyTorch)      │
+         │             Running on http://localhost:8000     │
+         │                                                 │
+         │  1. DensityDetector      (YOLO / Centroid Count)│
+         │  2. RiskPatternAnalyzer  (Trajectory / Swerve) │
+         │  3. EmergencyTriage      (Severity / VMS Wait)  │
+         │  4. RoutePredictor       (Bottleneck ETA)       │
+         │  5. SignalOptimizer      (Phase Green Delta)    │
+         └───────────────────────┬─────────────────────────┘
+                                 │
+                 REST API / HTTP │ (JSON Endpoints)
+                                 ▼
+         ┌─────────────────────────────────────────────────┐
+         │       NODE.JS WEB BACKEND (Express + ws)        │
+         │             Running on http://localhost:5000     │
+         │  - Aggregates multi-junction telemetry          │
+         │  - MongoDB Mongoose persistence layer           │
+         │  - 1000ms WebSocket broadcaster to UI clients   │
+         └───────────────────────┬─────────────────────────┘
+                                 │
+             WebSocket / REST    │ (Live State Sync)
+                                 ▼
+         ┌─────────────────────────────────────────────────┐
+         │       REACT FRONTEND (Vite / Tailwind / CSS)    │
+         │             Running on http://localhost:5173     │
+         │  - TrafficContext.jsx (Reactive Global State)   │
+         │  - Overview, FYIs, Grid Map, Guards, Telemetry  │
+         └─────────────────────────────────────────────────┘
+
+====================================================================================================
+2. DIRECTORY STRUCTURE & WHERE TO DROP YOUR ML FILES
+====================================================================================================
+Place all your custom ML models, trained weights (.pt, .onnx, .pkl), and scripts in:
+`c:\Study\Coding\Github\I2TM-Project\backend\ml\`
+
+Target Directory Layout:
+----------------------------------------------------------------------------------------------------
+I2TM-Project/
+├── backend/
+│   ├── ml/                                 <-- [DROP YOUR ML CODE HERE]
+│   │   ├── main.py                         # FastAPI App & REST API Router
+│   │   ├── requirements.txt                # Python dependencies (fastapi, torch, ultralytics, etc.)
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   └── config.py                   # Thresholds, bounding limits, calibration constants
+│   │   ├── models/                         # [PUT YOUR MODEL LOGIC / WRAPPERS HERE]
+│   │   │   ├── __init__.py
+│   │   │   ├── density_detector.py         # Model 1: Density & Vehicle Counting
+│   │   │   ├── risk_analyzer.py            # Model 2: Lane Cut & Swerve Trajectory Scorer
+│   │   │   ├── triage_engine.py            # Model 3: Patient Severity & Triage Logic
+│   │   │   ├── route_predictor.py          # Model 4: Multi-Junction Bottleneck ETA
+│   │   │   └── signal_optimizer.py         # Model 5: Dynamic Signal Phase Allocation
+│   │   ├── weights/                        # (Optional) Pre-trained model weights (.pt, .onnx)
+│   │   │   ├── yolov8n_traffic.pt
+│   │   │   └── trajectory_lstm.onnx
+│   │   └── utils/                          # (Optional) Helper functions (drawing, math, bbox)
+│   │       ├── video_stream.py
+│   │       └── coordinates.py
+│   │
+│   └── web/                                <-- [NODE.JS INTERMEDIARY / WEBSOCKETS]
+│       ├── server.js                       # Express API, proxies calls to ML microservice
+│       └── package.json
+│
+└── frontend/                               <-- [REACT COMMAND DASHBOARD]
+    └── src/
+        ├── context/TrafficContext.jsx       # Consumes ML outputs & triggers simulations
+        └── components/dashboard/views/     # UI views visualizing ML predictions
+
+====================================================================================================
+3. THE 5 CORE ML MODELS: CONTRACTS, ENDPOINTS & SCHEMAS
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+3.1 MODEL 1: 4-APPROACH TRAFFIC DENSITY DETECTOR
+----------------------------------------------------------------------------------------------------
+• File Location: `backend/ml/models/density_detector.py`
+• FastAPI Route: `POST /api/ml/detect-density`
+• Purpose: Calculates vehicle count, road occupancy %, and congestion level across 4 approaches (North, South, East, West).
+
+• Expected Input Payload (JSON):
+{
+  "junction_id": "J-04",
+  "approaches": {
+    "North": { "vehicle_count": 42, "capacity": 50, "avg_speed_kmh": 18.2 },
+    "South": { "vehicle_count": 21, "capacity": 50, "avg_speed_kmh": 34.0 },
+    "East":  { "vehicle_count": 48, "capacity": 50, "avg_speed_kmh": 9.5 },
+    "West":  { "vehicle_count": 12, "capacity": 50, "avg_speed_kmh": 42.1 }
+  }
+}
+
+• Expected Output Response (JSON):
+{
+  "junction_id": "J-04",
+  "total_vehicles": 123,
+  "average_density_pct": 61.5,
+  "critical_approaches": ["East", "North"],
+  "approaches_evaluated": {
+    "North": { "density_pct": 84.0, "status": "HIGH", "suggested_green_sec": 45 },
+    "South": { "density_pct": 42.0, "status": "MEDIUM", "suggested_green_sec": 25 },
+    "East":  { "density_pct": 96.0, "status": "CRITICAL", "suggested_green_sec": 60 },
+    "West":  { "density_pct": 24.0, "status": "LOW", "suggested_green_sec": 15 }
+  }
+}
+
+----------------------------------------------------------------------------------------------------
+3.2 MODEL 2: RISKY DRIVING & LANE CUT/SWERVE AI TRAJECTORY INTERCEPTOR
+----------------------------------------------------------------------------------------------------
+• File Location: `backend/ml/models/risk_analyzer.py`
+• FastAPI Route: `POST /api/ml/analyze-risk`
+• Purpose: Evaluates vehicle centroid trajectory points [(x, y, timestamp)] for sudden swerving (>32°),
+  abrupt multi-lane cuts, wrong-side driving, and generates a crash probability score (0-100%).
+
+• Expected Input Payload (JSON):
+{
+  "vehicle_id": "DL-04-TC-201",
+  "speed_kmh": 58.0,
+  "trajectory": [
+    { "x": 102.4, "y": 45.1, "timestamp": 1786700000.1 },
+    { "x": 118.2, "y": 72.8, "timestamp": 1786700000.6 },
+    { "x": 145.0, "y": 120.3, "timestamp": 1786700001.2 }
+  ]
+}
+
+• Expected Output Response (JSON):
+{
+  "vehicle_id": "DL-04-TC-201",
+  "risk_detected": true,
+  "risk_score": 84.0,
+  "pattern_type": "AGGRESSIVE_LANE_CUT",
+  "alert_level": "CRITICAL",
+  "swerve_angle_deg": 38.4,
+  "recommended_action": "HOLD_UPSTREAM_SIGNAL_RED_AND_ALERT_MARSHAL",
+  "reason": "Abrupt 38.4° deflection across 3 lanes at 58 km/h creates high T-bone collision risk."
+}
+
+----------------------------------------------------------------------------------------------------
+3.3 MODEL 3: PATIENT-SEVERITY EMERGENCY TRIAGE & GREEN CORRIDOR ENGINE
+----------------------------------------------------------------------------------------------------
+• File Location: `backend/ml/models/triage_engine.py`
+• FastAPI Route: `POST /api/ml/triage-emergency`
+• Purpose: Computes green corridor pre-clear distance, signal hold duration, and roadside Variable Message Sign (VMS)
+  countdown based on patient condition (CRITICAL / SERIOUS / STABLE) and vehicle type (Ambulance, Fire Engine, Police).
+
+• Expected Input Payload (JSON):
+{
+  "ambulance_id": "DL-01-AMB-889",
+  "patient_severity": "CRITICAL",
+  "distance_to_junction_m": 850.0,
+  "current_speed_kmh": 45.0,
+  "route_congestion_pct": 88.0
+}
+
+• Expected Output Response (JSON):
+{
+  "ambulance_id": "DL-01-AMB-889",
+  "triage_state": "RED",
+  "priority_level": 1,
+  "eta_seconds": 68.0,
+  "clear_distance_meters": 1200,
+  "signal_action": {
+    "override_active": true,
+    "target_approach": "EAST",
+    "hold_conflicting_approaches": ["NORTH", "SOUTH", "WEST"],
+    "allocated_green_seconds": 90
+  },
+  "roadside_display": {
+    "message": "Keep left lane clear for emergency vehicle",
+    "suggested_wait_seconds": 90
+  }
+}
+
+----------------------------------------------------------------------------------------------------
+3.4 MODEL 4: MULTI-JUNCTION ARTERIAL ROUTE CONGESTION PREDICTOR
+----------------------------------------------------------------------------------------------------
+• File Location: `backend/ml/models/route_predictor.py`
+• FastAPI Route: `POST /api/ml/predict-route`
+• Purpose: Models multi-node arterial networks (`J-01` -> `J-02` -> `J-03` -> `J-04`) to forecast transit ETA
+  and bottleneck delays along an ambulance run to the destination hospital.
+
+• Expected Input Payload (JSON):
+{
+  "corridor_id": "CORRIDOR-AIIMS",
+  "junctions": [
+    { "junction_id": "J-01", "current_density": 72.0, "distance_to_next_m": 400 },
+    { "junction_id": "J-02", "current_density": 88.0, "distance_to_next_m": 600 },
+    { "junction_id": "J-03", "current_density": 45.0, "distance_to_next_m": 500 }
+  ]
+}
+
+• Expected Output Response (JSON):
+{
+  "corridor_id": "CORRIDOR-AIIMS",
+  "total_distance_m": 1500,
+  "predicted_transit_time_sec": 142.5,
+  "bottleneck_junction": "J-02",
+  "bottleneck_risk": "HIGH",
+  "pre_clear_schedule": [
+    { "junction_id": "J-01", "pre_clear_in_sec": 0, "hold_sec": 45 },
+    { "junction_id": "J-02", "pre_clear_in_sec": 35, "hold_sec": 60 },
+    { "junction_id": "J-03", "pre_clear_in_sec": 85, "hold_sec": 40 }
+  ]
+}
+
+----------------------------------------------------------------------------------------------------
+3.5 MODEL 5: DYNAMIC DENSITY-WEIGHTED SIGNAL PHASE OPTIMIZER
+----------------------------------------------------------------------------------------------------
+• File Location: `backend/ml/models/signal_optimizer.py`
+• FastAPI Route: `POST /api/ml/optimize-signal`
+• Purpose: Replaces fixed 60s timers by computing mathematical green splits proportional to queue sizes.
+
+• Expected Input Payload (JSON):
+{
+  "approaches": {
+    "North": { "density_pct": 84.0, "vehicle_count": 42 },
+    "South": { "density_pct": 42.0, "vehicle_count": 21 },
+    "East":  { "density_pct": 96.0, "vehicle_count": 48 },
+    "West":  { "density_pct": 24.0, "vehicle_count": 12 }
+  },
+  "cycle_time_sec": 120,
+  "emergency_override": false,
+  "emergency_approach": "EAST"
+}
+
+• Expected Output Response (JSON):
+{
+  "cycle_time_sec": 120,
+  "emergency_override_active": false,
+  "phase_split": {
+    "East":  { "green_sec": 46, "yellow_sec": 4, "red_sec": 70 },
+    "North": { "green_sec": 40, "yellow_sec": 4, "red_sec": 76 },
+    "South": { "green_sec": 20, "yellow_sec": 4, "red_sec": 96 },
+    "West":  { "green_sec": 14, "yellow_sec": 4, "red_sec": 102 }
+  },
+  "efficiency_gain_pct": 34.2
+}
+
+====================================================================================================
+4. NODE.JS WEB API INTEGRATION POINTS (backend/web/)
+====================================================================================================
+The Node.js Express server acts as the central middleware. If you want the Web Backend to proxy your ML calls:
+
+1. `backend/web/server.js`:
+   - Line 12: `const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';`
+   - Line 105: `app.post('/api/emergency/trigger', async (req, res) => ...)`
+     Calls `${ML_SERVICE_URL}/api/ml/triage-emergency` via Axios and broadcasts the updated state over WebSockets (`wss`).
+
+2. Adding new proxy endpoints in `server.js`:
+   To forward live density detections or risk analysis from cameras to the web server:
+   ```javascript
+   app.post('/api/traffic/analyze-density', async (req, res) => {
+     try {
+       const response = await axios.post(`${ML_SERVICE_URL}/api/ml/detect-density`, req.body);
+       activeSimulation.approaches = response.data.approaches_evaluated;
+       broadcastState();
+       res.json(response.data);
+     } catch (err) {
+       res.status(500).json({ error: err.message });
+     }
+   });
+   ```
+
+====================================================================================================
+5. FRONTEND INTEGRATION POINTS & STATE HOOKS (frontend/src/)
+====================================================================================================
+The React frontend is fully reactive. Here is the exact mapping of where each ML model's data is displayed:
+
+1. `frontend/src/context/TrafficContext.jsx` [PRIMARY STATE HUB]:
+   - `approaches`: Holds 4-approach live density % (Updated by Model 1).
+   - `emergency`: Holds triage level, countdown, vehicle type, and roadside message (Updated by Model 3).
+   - `alerts`: Master alert list (Populated by Model 2 risky driving events & Model 1 congestion alerts).
+   - `suggestions`: Holds 1-click dynamic signal adjustments (Generated by Model 5).
+
+2. `frontend/src/components/dashboard/views/OverviewView.jsx`:
+   - Visualizes junction density gauges, collision risk radar (84%), and emergency corridor status.
+
+3. `frontend/src/components/dashboard/RiskPatternModule.jsx`:
+   - Displays Model 2 outputs: Vehicle ID (`DL-04-TC-201`), crash probability (84%), swerve angle (38°), and marshal dispatch buttons.
+
+4. `frontend/src/components/dashboard/GreenCorridorPanel.jsx`:
+   - Dispatches emergency triage to Model 3 with vehicle selector (`Ambulance`, `Fire Engine`, `Police Patrol`).
+
+5. `frontend/src/components/dashboard/RoadsideDisplayBoard.jsx`:
+   - Displays Model 3 VMS countdown clock (`WAIT: 90s`) and driver instructions.
+
+6. `frontend/src/components/dashboard/views/MapView.jsx`:
+   - Displays Model 4 multi-junction route predictions, animated vehicle position, and color-coded congestion heat map.
+
+7. `frontend/src/components/dashboard/views/ServicesView.jsx`:
+   - Live telemetry inspector for all 5 ML models (Inference latency, accuracy %, active status).
+
+====================================================================================================
+6. ENVIRONMENT VARIABLES & NETWORK CONFIGURATION
+====================================================================================================
+Ensure the following ports and URLs match across your `.env` files:
+
+1. `backend/ml/.env` or execution flags:
+   - Host: `0.0.0.0`
+   - Port: `8000`
+   - URL: `http://localhost:8000`
+
+2. `backend/web/.env`:
+   - `PORT=5000`
+   - `ML_SERVICE_URL=http://localhost:8000`
+   - `MONGODB_URI=mongodb://localhost:27017/sarathi_traffic` (optional for local mock)
+
+3. `frontend/.env`:
+   - `VITE_GOOGLE_MAPS_API_KEY=AIzaSyDryk6xPolNRKCDagGcw5XzadgFytzY6Yk`
+   - `VITE_API_URL=http://localhost:5000`
+   - `VITE_ML_URL=http://localhost:8000`
+
+====================================================================================================
+7. STEP-BY-STEP MERGE & VERIFICATION WORKFLOW
+====================================================================================================
+
+STEP 1: Copy your Python ML model files
+----------------------------------------------------------------------------------------------------
+Copy your standalone model classes/functions into `backend/ml/models/`:
+- If you have a YOLO/OpenCV script -> place in `backend/ml/models/density_detector.py`
+- If you have trajectory/LSTM models -> place in `backend/ml/models/risk_analyzer.py`
+- If you have trained weights (.pt, .onnx) -> create and place in `backend/ml/weights/`
+
+STEP 2: Update requirements.txt
+----------------------------------------------------------------------------------------------------
+Add any extra libraries your models need (e.g. `ultralytics`, `torch`, `opencv-python`, `scipy`) to:
+`c:\Study\Coding\Github\I2TM-Project\backend\ml\requirements.txt`
+
+STEP 3: Expose or wire endpoints in `backend/ml/main.py`
+----------------------------------------------------------------------------------------------------
+Ensure the function signatures in `main.py` match your new model classes.
+Example:
+```python
+from models.my_custom_detector import CustomYOLODetector
+
+@app.post("/api/ml/detect-density")
+def detect_density(request: DensityEvaluationRequest):
+    return CustomYOLODetector.process_frame(request.dict())
+```
+
+STEP 4: Test ML Endpoints with Swagger Docs
+----------------------------------------------------------------------------------------------------
+1. Open PowerShell and activate virtualenv:
+   cd c:\Study\Coding\Github\I2TM-Project\backend\ml
+   .\.venv\Scripts\Activate.ps1
+2. Start the ML service:
+   uvicorn main:app --reload --port 8000
+3. Open browser at: `http://localhost:8000/docs`
+4. Test each endpoint (`/detect-density`, `/analyze-risk`, `/triage-emergency`, etc.) using the "Try it out" button.
+
+STEP 5: Start Node.js Web Backend
+----------------------------------------------------------------------------------------------------
+1. Open a second terminal:
+   cd c:\Study\Coding\Github\I2TM-Project\backend\web
+   npm start
+   (Runs on http://localhost:5000)
+
+STEP 6: Start React Frontend
+----------------------------------------------------------------------------------------------------
+1. Open a third terminal:
+   cd c:\Study\Coding\Github\I2TM-Project\frontend
+   npm run dev
+   (Runs on http://localhost:5173)
+
+STEP 7: End-to-End Test in Browser
+----------------------------------------------------------------------------------------------------
+1. Visit `http://localhost:5173/`
+2. Click "Get Started" to open Command Dashboard.
+3. In Sidebar, click "Simulate Green Corridor" -> verify emergency triage response from ML backend.
+4. Navigate to "Services" tab -> verify live telemetry for all 5 ML models.
+
+====================================================================================================
+8. CHECKLIST BEFORE GOING LIVE
+====================================================================================================
+[ ] All 5 ML models return valid JSON conforming to schemas in Section 3.
+[ ] `http://localhost:8000/health` returns status: "healthy".
+[ ] CORS middleware is enabled in FastAPI (`allow_origins=["*"]`).
+[ ] Model weights and large files (.pt, .onnx) are added to `.gitignore`.
+[ ] Real-time inference latency is under 150ms per batch for live 1000ms dashboard ticks.
+====================================================================================================
