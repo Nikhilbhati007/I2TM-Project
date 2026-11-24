@@ -1,12 +1,31 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BrandLogo } from '../common/Icons';
-import { Button } from '../common/Button';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Menu, X } from 'lucide-react';
 
 export const Navbar = ({ onOpenDashboard }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [scrolled, setScrolled] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const currentScrollY = window.scrollY;
+      setScrolled(currentScrollY > 20);
+      
+      if (currentScrollY > lastScrollY && currentScrollY > 80) {
+        setHidden(true); // scrolling down
+      } else {
+        setHidden(false); // scrolling up
+      }
+      setLastScrollY(currentScrollY);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [lastScrollY]);
 
   const handleLogoClick = () => {
     if (location.pathname === '/') {
@@ -17,6 +36,7 @@ export const Navbar = ({ onOpenDashboard }) => {
   };
 
   const scrollToSection = (id) => {
+    setMobileOpen(false);
     if (location.pathname !== '/') {
       navigate('/');
       setTimeout(() => {
@@ -38,78 +58,126 @@ export const Navbar = ({ onOpenDashboard }) => {
     { label: 'Architecture', action: () => scrollToSection('architecture') },
     { label: 'Why Us', action: () => scrollToSection('why-us') },
     { label: 'Team', action: () => scrollToSection('team') },
-    { label: 'Command Center', action: () => onOpenDashboard ? onOpenDashboard('dashboard') : navigate('/dashboard') }
   ];
 
   return (
-    <nav
-      style={{
-        height: '80px',
-        padding: '0 40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#0F172A',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        color: '#FFFFFF'
-      }}
-    >
-      {/* Brand Logo (Navigates home / scrolls to top) */}
-      <div
-        onClick={handleLogoClick}
-        style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+    <>
+      <nav
+        style={{
+          height: '72px',
+          padding: '0 32px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: scrolled ? 'var(--color-1)' : 'transparent',
+          borderBottom: scrolled ? '1px solid var(--color-2)' : '1px solid transparent',
+          position: 'fixed',
+          top: hidden ? '-72px' : '0',
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          transition: 'top 0.3s ease, background-color 0.3s ease, border-bottom 0.3s ease',
+          color: 'var(--color-4)'
+        }}
       >
-        <BrandLogo size={34} color="var(--primary-orange)" />
-        <div>
-          <span style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF', letterSpacing: '-0.02em', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
-            SARATHI
-          </span>
-          <span style={{ fontSize: '10px', display: 'block', color: 'var(--primary-orange)', fontWeight: '700', letterSpacing: '0.08em', marginTop: '-2px' }}>
-            सारथी · SMART TRAFFIC INTELLIGENCE
-          </span>
+        {/* Brand Logo */}
+        <div
+          onClick={handleLogoClick}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+        >
+          <BrandLogo size={28} />
+          <div>
+            <span style={{
+              fontSize: '18px',
+              color: 'var(--color-4)',
+              letterSpacing: '0.05em',
+            }}>
+              SARATHI
+            </span>
+          </div>
         </div>
-      </div>
 
-      {/* Purposeful Page Section Scroll Links + Direct Dashboard Link */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
-        {navLinks.map((link) => (
+        {/* Desktop Nav Links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {navLinks.map((link) => (
+            <button
+              key={link.label}
+              onClick={link.action}
+              style={{
+                fontSize: '13px',
+                color: 'var(--color-3)',
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                padding: '8px 14px',
+                borderRadius: '2px',
+              }}
+            >
+              {link.label}
+            </button>
+          ))}
+        </div>
+
+        {/* CTA Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
-            key={link.label}
-            onClick={link.action}
+            onClick={() => onOpenDashboard && onOpenDashboard('dashboard')}
             style={{
-              fontSize: '14px',
-              fontWeight: link.label === 'Command Center' ? '700' : '600',
-              color: link.label === 'Command Center' ? 'var(--primary-orange)' : '#CBD5E1',
-              textDecoration: 'none',
+              fontSize: '13px',
+              color: 'var(--color-3)',
               cursor: 'pointer',
               background: 'none',
-              border: 'none',
-              padding: '4px 8px',
-              transition: 'color 0.15s ease'
+              border: '1px solid var(--color-2)',
+              padding: '8px 16px',
+              borderRadius: '2px',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--primary-orange)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = link.label === 'Command Center' ? 'var(--primary-orange)' : '#CBD5E1')}
           >
-            {link.label}
+            Dashboard
           </button>
-        ))}
-      </div>
 
-      {/* Single Clear "Get Started" Entry CTA */}
-      <div>
-        <Button
-          variant="primary"
-          size="md"
-          iconRight={ArrowRight}
-          onClick={() => onOpenDashboard ? onOpenDashboard('dashboard') : navigate('/dashboard')}
-        >
-          Get Started
-        </Button>
-      </div>
-    </nav>
+          <button
+            onClick={() => onOpenDashboard && onOpenDashboard('dashboard')}
+            style={{
+              fontSize: '13px',
+              color: 'var(--color-4)',
+              cursor: 'pointer',
+              background: 'var(--color-6)',
+              border: 'none',
+              padding: '9px 18px',
+              borderRadius: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            Open App
+            <ArrowRight size={14} />
+          </button>
+
+          {/* Mobile toggle */}
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            style={{
+              display: 'none',
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-4)',
+              cursor: 'pointer',
+              padding: '4px'
+            }}
+            className="mobile-menu-btn"
+          >
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </nav>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .mobile-menu-btn { display: block !important; }
+        }
+      `}</style>
+    </>
   );
 };
 

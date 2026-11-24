@@ -2,15 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
-import Infobar from './Infobar'
+import Infobar from './Infobar';
+import { AdminDebugPanel } from './AdminDebugPanel';
 // Section Views
 import { OverviewView } from './views/OverviewView';
 import { JunctionsView } from './views/JunctionsView';
 import { IncidentsView } from './views/IncidentsView';
 import { CamerasSignalsView } from './views/CamerasSignalsView';
 import { GreenCorridorsView } from './views/GreenCorridorsView';
+import { AiInsightsView } from './views/AiInsightsView';
 
-const VALID_TABS = ['dashboard', 'junctions', 'cameras', 'incidents', 'green-corridors'];
+const VALID_TABS = ['dashboard', 'junctions', 'cameras', 'incidents', 'green-corridors', 'ai-insights'];
 
 export const DashboardLayout = () => {
   const { tab } = useParams();
@@ -91,6 +93,8 @@ export const DashboardLayout = () => {
         return <IncidentsView />;
       case 'green-corridors':
         return <GreenCorridorsView />;
+      case 'ai-insights':
+        return <AiInsightsView />;
       default:
         return <OverviewView />;
     }
@@ -120,6 +124,7 @@ export const DashboardLayout = () => {
           </main>
         </div>
       </div>
+      <AdminDebugPanel />
     </div>
   );
 };

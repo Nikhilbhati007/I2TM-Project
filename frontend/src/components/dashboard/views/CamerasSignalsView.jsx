@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Camera, Zap, Search, Layers, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import { useTraffic } from '../../../context/TrafficContext';
-import { INDIAN_CITIES } from '../../../data/dummyData';
+
+import { getSignalHex } from '../../../utils/trafficUtils';
 import { Dropdown } from '../../common/Dropdown';
 
 export const CamerasSignalsView = () => {
-  const { selectedJunction, approaches, setSelectedJunction, setActiveMapElementId } = useTraffic();
+  const { selectedJunction, selectedJunctionId, approaches, setSelectedJunction, setActiveMapElementId } = useTraffic();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -19,42 +20,50 @@ export const CamerasSignalsView = () => {
   const [selectedJunctionFilter, setSelectedJunctionFilter] = useState('ALL');
   const [signalColorFilter, setSignalColorFilter] = useState('ALL');
 
-  const masterEquipmentList = useMemo(() => {
-    const list = [];
-    INDIAN_CITIES.forEach((city) => {
-      (city.junctions || [`${city.name} Central Hub`]).forEach((jName, jIdx) => {
-        const camN = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-N`, deviceType: 'CAMERA', name: `${jName} North CCTV`, cityName: city.name, junction: jName, approach: 'North Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Dynamic Density', vehicles: Math.floor(Math.random() * 35) + 15, densityPct: Math.floor(Math.random() * 45) + 45, status: 'ONLINE' };
-        const camE = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-E`, deviceType: 'CAMERA', name: `${jName} East CCTV`, cityName: city.name, junction: jName, approach: 'East Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Swerve Risk AI', vehicles: Math.floor(Math.random() * 40) + 20, densityPct: Math.floor(Math.random() * 40) + 55, status: 'ONLINE' };
-        const camW = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-W`, deviceType: 'CAMERA', name: `${jName} West CCTV`, cityName: city.name, junction: jName, approach: 'West Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Multi-Class', vehicles: Math.floor(Math.random() * 25) + 10, densityPct: Math.floor(Math.random() * 35) + 30, status: 'ONLINE' };
-        const camS = { id: `${city.id}-JUNC-${jIdx + 1}-CAM-S`, deviceType: 'CAMERA', name: `${jName} South CCTV`, cityName: city.name, junction: jName, approach: 'South Approach', fovSector: '70° Sector Arc', resolution: '1080p 60fps', model: 'YOLOv8 Emergency Triage', vehicles: Math.floor(Math.random() * 30) + 15, densityPct: Math.floor(Math.random() * 35) + 40, status: 'ONLINE' };
-
-        const sigN = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-N`, deviceType: 'SIGNAL', name: `${jName} North Traffic Light`, cityName: city.name, junction: jName, approach: 'North Approach', light: jName === selectedJunction ? approaches.North.currentLight : (jIdx % 2 === 0 ? 'RED' : 'GREEN'), greenSec: jName === selectedJunction ? approaches.North.greenSec : (jIdx % 2 === 0 ? 25 : 45), densityPct: jName === selectedJunction ? approaches.North.densityPct : 75, vehicles: jName === selectedJunction ? approaches.North.vehicleCount : 38, avgSpeed: '18.2 km/h', status: 'ONLINE' };
-        const sigE = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-E`, deviceType: 'SIGNAL', name: `${jName} East Traffic Light`, cityName: city.name, junction: jName, approach: 'East Approach', light: jName === selectedJunction ? approaches.East.currentLight : (jIdx % 2 === 0 ? 'GREEN' : 'RED'), greenSec: jName === selectedJunction ? approaches.East.greenSec : (jIdx % 2 === 0 ? 55 : 20), densityPct: jName === selectedJunction ? approaches.East.densityPct : 92, vehicles: jName === selectedJunction ? approaches.East.vehicleCount : 48, avgSpeed: '9.5 km/h', status: 'ONLINE' };
-        const sigW = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-W`, deviceType: 'SIGNAL', name: `${jName} West Traffic Light`, cityName: city.name, junction: jName, approach: 'West Approach', light: jName === selectedJunction ? approaches.West.currentLight : 'RED', greenSec: jName === selectedJunction ? approaches.West.greenSec : 15, densityPct: jName === selectedJunction ? approaches.West.densityPct : 28, vehicles: jName === selectedJunction ? approaches.West.vehicleCount : 14, avgSpeed: '38.0 km/h', status: 'ONLINE' };
-        const sigS = { id: `${city.id}-JUNC-${jIdx + 1}-SIG-S`, deviceType: 'SIGNAL', name: `${jName} South Traffic Light`, cityName: city.name, junction: jName, approach: 'South Approach', light: jName === selectedJunction ? approaches.South.currentLight : 'RED', greenSec: jName === selectedJunction ? approaches.South.greenSec : 25, densityPct: jName === selectedJunction ? approaches.South.densityPct : 45, vehicles: jName === selectedJunction ? approaches.South.vehicleCount : 22, avgSpeed: '34.0 km/h', status: 'ONLINE' };
-
-        list.push(camN, sigN, camE, sigE, camW, sigW, camS, sigS);
-      });
-    });
-    return list;
-  }, [selectedJunction, approaches]);
+  // Fetch master equipment list from backend API
+  const [masterEquipmentList, setMasterEquipmentList] = useState([]);
+  
+  useEffect(() => {
+    const loadEquipment = async () => {
+      try {
+        const { fetchAPI } = await import('../../../utils/api');
+        const data = await fetchAPI('/equipment');
+        const mappedData = data.map(eq => ({
+          ...eq,
+          deviceType: eq.device_type,
+          cityName: eq.city_name,
+          junction: eq.junction_name,
+          light: 'RED', // Fallback for signals
+        }));
+        setMasterEquipmentList(mappedData);
+      } catch (err) {
+        console.error("Failed to load equipment", err);
+      }
+    };
+    loadEquipment();
+    const int = setInterval(loadEquipment, 10000); // refresh every 10s
+    return () => clearInterval(int);
+  }, []);
 
   const filteredEquipment = useMemo(() => {
     return masterEquipmentList.filter((item) => {
+      const idParam = searchParams.get('id');
+      if (idParam && item.device_id !== idParam && item.id !== idParam) return false;
+      
       if (activeTabMode === 'CAMERAS' && item.deviceType !== 'CAMERA') return false;
       if (activeTabMode === 'SIGNALS' && item.deviceType !== 'SIGNAL') return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        if (!item.name.toLowerCase().includes(q) && !item.id.toLowerCase().includes(q) && !item.junction.toLowerCase().includes(q) && !item.cityName.toLowerCase().includes(q)) return false;
+        if (!item.name.toLowerCase().includes(q) && !(item.device_id || '').toLowerCase().includes(q) && !item.junction.toLowerCase().includes(q) && !item.cityName.toLowerCase().includes(q)) return false;
       }
       if (selectedJunctionFilter !== 'ALL' && item.junction !== selectedJunctionFilter) return false;
       if (signalColorFilter !== 'ALL' && item.deviceType === 'SIGNAL' && item.light !== signalColorFilter) return false;
       return true;
     });
-  }, [masterEquipmentList, activeTabMode, searchQuery, selectedJunctionFilter, signalColorFilter]);
+  }, [masterEquipmentList, activeTabMode, searchQuery, selectedJunctionFilter, signalColorFilter, searchParams]);
 
   const totalPages = Math.max(1, Math.ceil(filteredEquipment.length / ITEMS_PER_PAGE));
-  const validPage = Math.min(currentPage, totalPages);
+  const validPage  = Math.min(currentPage, totalPages);
 
   const paginatedEquipment = useMemo(() => {
     const start = (validPage - 1) * ITEMS_PER_PAGE;
@@ -62,33 +71,89 @@ export const CamerasSignalsView = () => {
   }, [filteredEquipment, validPage]);
 
   const handlePageChange = (newPage) => {
-    setSearchParams((prevParams) => {
-      const newParams = new URLSearchParams(prevParams);
-      newParams.set('page', newPage.toString());
-      return newParams;
-    });
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('page', newPage.toString()); return p; });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const junctionOptions = useMemo(() => {
     const juncs = Array.from(new Set(masterEquipmentList.map((e) => e.junction)));
-    return [
-      { value: 'ALL', label: 'All Junctions (Nationwide)' },
-      ...juncs.map((j) => ({ value: j, label: j }))
-    ];
+    return [{ value: 'ALL', label: 'All Junctions (Nationwide)' }, ...juncs.map((j) => ({ value: j, label: j }))];
   }, [masterEquipmentList]);
 
-  const totalCamsCount = masterEquipmentList.filter((e) => e.deviceType === 'CAMERA').length;
-  const totalSigsCount = masterEquipmentList.filter((e) => e.deviceType === 'SIGNAL').length;
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newEq, setNewEq] = useState({ device_id: '', device_type: 'CAMERA', name: '', city_name: 'Nagpur', junction_id: '', junction_name: '', approach: 'North Approach', latitude: 0, longitude: 0 });
+
+  const handleAddEquipment = async (e) => {
+    e.preventDefault();
+    try {
+      const { fetchAPI } = await import('../../../utils/api');
+      await fetchAPI('/equipment', {
+        method: 'POST',
+        body: JSON.stringify(newEq)
+      });
+      alert("Equipment added successfully!");
+      setShowAddModal(false);
+      // It will auto-refresh via the 10s interval, or we could trigger a fetch here.
+    } catch (err) {
+      alert("Failed to add equipment: " + err.message);
+    }
+  };
+
+  const totalCamsCount = masterEquipmentList.filter((e) => e.device_type === 'CAMERA').length;
+  const totalSigsCount = masterEquipmentList.filter((e) => e.device_type === 'SIGNAL').length;
 
   const tabModes = [
-    { id: 'BOTH', label: `All (${totalCamsCount + totalSigsCount})`, icon: Layers },
-    { id: 'CAMERAS', label: `Cameras (${totalCamsCount})`, icon: Camera },
-    { id: 'SIGNALS', label: `Signals (${totalSigsCount})`, icon: Zap },
+    { id: 'BOTH',    label: `All (${totalCamsCount + totalSigsCount})`, icon: Layers },
+    { id: 'CAMERAS', label: `Cameras (${totalCamsCount})`,              icon: Camera },
+    { id: 'SIGNALS', label: `Signals (${totalSigsCount})`,              icon: Zap }
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {searchParams.get('id') && (
+        <div className="bg-sky-50 border border-sky-200 text-sky-800 p-3 rounded-sm flex items-center justify-between">
+          <div className="text-sm">Viewing specific equipment: <strong>{searchParams.get('id')}</strong></div>
+          <button 
+            onClick={() => {
+              const p = new URLSearchParams(searchParams);
+              p.delete('id');
+              setSearchParams(p);
+            }} 
+            className="text-xs bg-white border border-sky-300 px-3 py-1 rounded cursor-pointer hover:bg-sky-100"
+          >
+            Clear Filter
+          </button>
+        </div>
+      )}
+      
+      {/* Add Equipment Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-(--color-4) border border-(--color-3) p-6 rounded-md w-[400px]">
+            <h3 className="text-lg mb-4">Add New Equipment</h3>
+            <form onSubmit={handleAddEquipment} className="space-y-3">
+              <input type="text" placeholder="Device ID (e.g. NGP-CAM-99)" required value={newEq.device_id} onChange={e => setNewEq({...newEq, device_id: e.target.value})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm"/>
+              <select value={newEq.device_type} onChange={e => setNewEq({...newEq, device_type: e.target.value})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm">
+                <option value="CAMERA">Camera</option>
+                <option value="SIGNAL">Signal</option>
+              </select>
+              <input type="text" placeholder="Name (e.g. New North CCTV)" required value={newEq.name} onChange={e => setNewEq({...newEq, name: e.target.value})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm"/>
+
+              <input type="text" placeholder="Junction ID" required value={newEq.junction_id} onChange={e => setNewEq({...newEq, junction_id: e.target.value})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm"/>
+              <input type="text" placeholder="Junction Name" required value={newEq.junction_name} onChange={e => setNewEq({...newEq, junction_name: e.target.value})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm"/>
+              <input type="number" step="any" placeholder="Latitude" required value={newEq.latitude} onChange={e => setNewEq({...newEq, latitude: parseFloat(e.target.value)})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm"/>
+              <input type="number" step="any" placeholder="Longitude" required value={newEq.longitude} onChange={e => setNewEq({...newEq, longitude: parseFloat(e.target.value)})} className="w-full p-2 bg-(--color-5) border border-(--color-3) rounded text-sm"/>
+              
+              <div className="flex justify-end gap-2 mt-4">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded text-sm">Cancel</button>
+                <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">Save Equipment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Filter bar */}
       <div className="bg-(--color-4) rounded-sm p-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-1.5">
           {tabModes.map(({ id, label, icon: Icon }) => (
@@ -103,6 +168,12 @@ export const CamerasSignalsView = () => {
           ))}
         </div>
         <div className="flex items-center gap-2 flex-1 min-w-60 justify-end">
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 py-1.5 px-3 rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer transition-colors text-sm mr-2"
+          >
+            + Add Equipment
+          </button>
           <div className="relative w-60">
             <input
               type="text"
@@ -123,6 +194,8 @@ export const CamerasSignalsView = () => {
           </div>
         </div>
       </div>
+
+      {/* Equipment list */}
       <div className="bg-(--color-4) rounded-sm p-4 flex flex-col gap-4">
         <div className="flex items-center justify-between border-b border-(--color-3) pb-3">
           <div>
@@ -148,16 +221,13 @@ export const CamerasSignalsView = () => {
             </div>
           )}
         </div>
+
         <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4">
           {paginatedEquipment.map((item) => {
             const isCam = item.deviceType === 'CAMERA';
-            const signalHex = item.light === 'GREEN' ? '#22C55E' : item.light === 'AMBER' ? '#F59E0B' : '#EF4444';
-
+            const signalHex = getSignalHex(item.light);
             return (
-              <div
-                key={item.id}
-                className="bg-(--color-5) rounded-sm p-3.5 space-y-3"
-              >
+              <div key={item.id} className="bg-(--color-5) rounded-sm p-3.5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     {isCam ? (
@@ -173,11 +243,7 @@ export const CamerasSignalsView = () => {
                     )}
                   </div>
                   <button
-                    onClick={() => {
-                      setSelectedJunction(item.junction);
-                      setActiveMapElementId(item.id);
-                      navigate('/dashboard');
-                    }}
+                    onClick={() => { setSelectedJunction(item.junction); setActiveMapElementId(item.device_id); navigate('/dashboard?tab=overview'); }}
                     className="text-(--color-6) hover:bg-(--color-6)/10 p-1 rounded-sm transition-colors cursor-pointer flex items-center gap-1 text-xs"
                     title="Show on map"
                   >
@@ -192,49 +258,19 @@ export const CamerasSignalsView = () => {
                 <div className="bg-(--color-4) rounded-sm p-2.5 text-xs space-y-2">
                   {isCam ? (
                     <>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Approach:</span>
-                        <span>{item.approach}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Resolution / FOV:</span>
-                        <span>{item.resolution} ({item.fovSector})</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">AI Model:</span>
-                        <span>{item.model}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Vehicles:</span>
-                        <span>{item.vehicles} units</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Density Load:</span>
-                        <span>{item.densityPct}%</span>
-                      </div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Approach:</span><span>{item.approach}</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Resolution / FOV:</span><span>{item.resolution} ({item.fovSector})</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">AI Model:</span><span>{item.model}</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Vehicles:</span><span>{item.vehicles} units</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Density Load:</span><span>{item.densityPct}%</span></div>
                     </>
                   ) : (
                     <>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Phase:</span>
-                        <span style={{ color: signalHex }}>{item.light} ({item.greenSec}s)</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Approach:</span>
-                        <span>{item.approach}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Queue:</span>
-                        <span>{item.vehicles} units</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Avg Speed:</span>
-                        <span>{item.avgSpeed}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-(--color-2)">Density Load:</span>
-                        <span>{item.densityPct}%</span>
-                      </div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Phase:</span><span style={{ color: signalHex }}>{item.light} ({item.greenSec}s)</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Approach:</span><span>{item.approach}</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Queue:</span><span>{item.vehicles} units</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Avg Speed:</span><span>{item.avgSpeed}</span></div>
+                      <div className="flex justify-between"><span className="text-(--color-2)">Density Load:</span><span>{item.densityPct}%</span></div>
                     </>
                   )}
                 </div>
@@ -246,19 +282,15 @@ export const CamerasSignalsView = () => {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between py-2.5 px-3 bg-(--color-5) rounded-sm flex-wrap gap-2">
-            <div className="text-xs text-(--color-2)">
-              Page {validPage} of {totalPages} ({filteredEquipment.length} items)
-            </div>
+            <div className="text-xs text-(--color-2)">Page {validPage} of {totalPages} ({filteredEquipment.length} items)</div>
             <div className="flex items-center gap-1.5">
               <button
                 disabled={validPage <= 1}
                 onClick={() => handlePageChange(validPage - 1)}
                 className={`py-1 px-2.5 text-xs rounded-sm border flex items-center gap-1 ${validPage <= 1 ? 'border-(--color-3) text-(--color-2) cursor-not-allowed' : 'border-(--color-3) cursor-pointer'}`}
               >
-                <ChevronLeft size={13} />
-                Prev
+                <ChevronLeft size={13} /> Prev
               </button>
-
               {Array.from(
                 { length: Math.min(totalPages, validPage + 2) - Math.max(1, validPage - 2) + 1 },
                 (_, i) => Math.max(1, validPage - 2) + i
@@ -271,14 +303,12 @@ export const CamerasSignalsView = () => {
                   {pg}
                 </button>
               ))}
-
               <button
                 disabled={validPage >= totalPages}
                 onClick={() => handlePageChange(validPage + 1)}
                 className={`py-1 px-2.5 text-xs rounded-sm border flex items-center gap-1 ${validPage >= totalPages ? 'border-(--color-3) text-(--color-2) cursor-not-allowed' : 'border-(--color-3) cursor-pointer'}`}
               >
-                Next
-                <ChevronRight size={13} />
+                Next <ChevronRight size={13} />
               </button>
             </div>
           </div>

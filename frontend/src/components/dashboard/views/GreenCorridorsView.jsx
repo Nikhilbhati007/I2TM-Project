@@ -1,43 +1,91 @@
 import React from 'react';
 import { useTraffic } from '../../../context/TrafficContext';
-import { EMERGENCY_PRESETS } from '../../../data/dummyData';
-import { Siren, Flame, ShieldAlert, Navigation2, CheckCircle2, Clock, Map as MapIcon } from 'lucide-react';
+import { getEmergencyFromCorridors } from '../../../utils/trafficUtils';
+import { Siren, Flame, Navigation2, CheckCircle2, Clock, Map as MapIcon } from 'lucide-react';
 
-export const GreenCorridorsView = () => {
-  const { activeCorridors, triggerEmergencyCorridor, removeEmergencyCorridor, activeCity } = useTraffic();
+const VEHICLE_ICON_MAP = {
+  AMBULANCE: Siren,
+  FIRE: Flame
+};
+
+const AmbulanceRouteInsights = ({ vehicleId }) => {
+  const [data, setData] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!vehicleId) return;
+    const fetchRouteData = async () => {
+      try {
+        const { fetchAPI } = await import('../../../utils/api');
+        const res = await fetchAPI(`/ambulance/routes/${vehicleId}`);
+        setData(res);
+      } catch(e) {
+        // silently fail if no data
+      }
+    };
+    fetchRouteData();
+    const int = setInterval(fetchRouteData, 10000);
+    return () => clearInterval(int);
+  }, [vehicleId]);
+
+  if (!data) return null;
 
   return (
-    <div className="view-fade-in flex flex-col gap-4">
+    <div className="mt-4 pt-3 border-t border-(--color-3) flex flex-col gap-2">
+      <div className="text-xs font-semibold text-(--color-2) flex items-center gap-1.5">
+        <Navigation2 size={12} /> AI Route Analysis
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-(--color-5) p-2 rounded-sm border border-(--color-3)">
+          <div className="text-(--color-2) mb-0.5">Route Risk</div>
+          <div className="font-mono">{data.risk_score ? (data.risk_score * 100).toFixed(1) : 'N/A'}%</div>
+        </div>
+        <div className="bg-(--color-5) p-2 rounded-sm border border-(--color-3)">
+          <div className="text-(--color-2) mb-0.5">Estimated ETA</div>
+          <div className="font-mono">{data.eta_minutes ? data.eta_minutes.toFixed(1) : '--'} mins</div>
+        </div>
+      </div>
+      {data.alternate_routes && data.alternate_routes.length > 0 && (
+        <div className="bg-(--color-5) p-2 rounded-sm border border-(--color-3) text-xs">
+          <div className="text-(--color-2) mb-1">Alternate Route:</div>
+          <div>{data.alternate_routes[0]}</div>
+        </div>
+      )}
+    </div>
+  );
+};
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm">Active Green Corridors</div>
-          <div className="text-xs text-(--color-2) mt-0.5">
-            Real-time monitoring of emergency vehicles on pre-empted routes.
-          </div>
+
+export const GreenCorridorsView = () => {
+  const { activeCorridors, triggerEmergencyCorridor, removeEmergencyCorridor, appConfig } = useTraffic();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div>Active Green Corridors</div>
+        <div className="text-sm text-(--color-2) mt-0.5">
+          Monitoring of emergency vehicles on pre-empted routes.
         </div>
       </div>
 
-      {/* Dispatch buttons */}
-      <div className="bg-(--color-4) border border-(--color-3) rounded-sm p-3.5 flex items-center gap-3 flex-wrap">
-        <span className="text-xs text-(--color-2)">Dispatch:</span>
-        {Object.values(EMERGENCY_PRESETS).map((preset) => {
-          const IconComp = preset.vehicleType === 'AMBULANCE' ? Siren : preset.vehicleType === 'FIRE' ? Flame : ShieldAlert;
+      {/* Dispatch bar */}
+      <div className="bg-(--color-4) rounded-sm p-3 flex items-center gap-3 flex-wrap">
+        <span className="text-sm text-(--color-2)">Dispatch:</span>
+        {appConfig && appConfig.EMERGENCY_PRESETS && Object.values(appConfig.EMERGENCY_PRESETS).map((preset) => {
+          const IconComp = VEHICLE_ICON_MAP[preset.vehicleType] || Siren;
           return (
             <button
               key={preset.vehicleType}
               onClick={() => triggerEmergencyCorridor && triggerEmergencyCorridor(preset)}
-              className="flex items-center gap-2 py-1.5 px-3 text-sm border border-(--color-3) rounded-sm cursor-pointer transition-all duration-150 hover:border-(--color-6) hover:text-(--color-6)"
+              className="flex items-center gap-2 py-1.5 px-3 text-sm bg-(--color-5) border border-(--color-3) rounded-sm cursor-pointer transition-all duration-300 hover:border-(--color-6) hover:text-(--color-6)"
             >
-              <IconComp size={14} />
+              <IconComp size={16} />
               {preset.vehicleLabel}
             </button>
           );
         })}
       </div>
 
-      {/* Active Corridors */}
+      {/* Corridor cards */}
       {activeCorridors.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-80 bg-(--color-4) border border-(--color-3) rounded-sm">
           <MapIcon size={24} color="#bfbfbd" className="mb-3" />
@@ -47,17 +95,19 @@ export const GreenCorridorsView = () => {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(380px,1fr))] gap-4">
-          {activeCorridors.map(corridor => {
-            const isArrived = corridor.status === 'ARRIVED';
-            const progress = isArrived ? 100 : Math.min(100, Math.max(5, ((corridor.etaSeconds - corridor.countdownSeconds) / corridor.etaSeconds) * 100));
-            const IconComp = corridor.vehicleType === 'AMBULANCE' ? Siren : corridor.vehicleType === 'FIRE' ? Flame : ShieldAlert;
-            const themeColor = corridor.vehicleType === 'AMBULANCE' ? '#DC2626' : corridor.vehicleType === 'FIRE' ? '#EA580C' : '#2563EB';
+        <div className="grid grid-cols-2 gap-4">
+          {activeCorridors.map((corridor) => {
+            const isArrived   = corridor.status === 'ARRIVED';
+            const progress    = isArrived
+              ? 100
+              : Math.min(100, Math.max(5, ((corridor.etaSeconds - corridor.countdownSeconds) / corridor.etaSeconds) * 100));
+            const IconComp    = VEHICLE_ICON_MAP[corridor.vehicleType] || Siren;
+            const themeColor  = corridor.vehicleType === 'AMBULANCE' ? '#DC2626' : '#EA580C';
 
             return (
               <div
                 key={corridor.id}
-                className="bg-(--color-4) border border-(--color-3) rounded-sm overflow-hidden"
+                className="bg-(--color-4) rounded-sm overflow-hidden"
               >
                 {/* Header */}
                 <div className="p-4 border-b border-(--color-3)">
@@ -73,7 +123,7 @@ export const GreenCorridorsView = () => {
                             {corridor.vehicleLabel}
                           </span>
                         </div>
-                        <div className="text-xs text-(--color-2)">
+                        <div className="text-xs text-(--color-2) mt-1.5">
                           {corridor.priorityTag || 'Priority 1'} · {corridor.id}
                         </div>
                       </div>
@@ -83,9 +133,9 @@ export const GreenCorridorsView = () => {
                     <div className="text-right">
                       {isArrived ? (
                         <div className="flex flex-col items-end gap-1">
-                          <div className="flex items-center gap-1.5 text-green-700 text-sm">
+                          <div className="flex items-center gap-1 text-green-700 text-sm">
                             <CheckCircle2 size={14} />
-                            ARRIVED
+                            Arrived
                           </div>
                           <button
                             onClick={() => removeEmergencyCorridor(corridor.id)}
@@ -95,18 +145,42 @@ export const GreenCorridorsView = () => {
                           </button>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex flex-col items-end gap-1.5">
                           <div className="flex items-center gap-1.5 text-sm" style={{ color: themeColor }}>
                             <Clock size={14} className="animate-pulse-slow" />
                             {corridor.countdownSeconds}s ETA
                           </div>
                           <div className="text-xs text-(--color-2)">{corridor.distanceMeters}m away</div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await fetch('http://localhost:8000/api/v1/emergency/telemetry', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    ambulance_id: corridor.vehicleId,
+                                    latitude: corridor.originPos.lat + (Math.random() * 0.001),
+                                    longitude: corridor.originPos.lng + (Math.random() * 0.001),
+                                    speed_kmh: 60,
+                                    heading_degrees: 90,
+                                    timestamp: new Date().toISOString()
+                                  })
+                                });
+                                alert("Telemetry Ping Sent!");
+                              } catch(e) {
+                                alert("Failed to send telemetry: " + e.message);
+                              }
+                            }}
+                            className="mt-1 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-white rounded border border-slate-700"
+                          >
+                            Simulate Telemetry Ping
+                          </button>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Route progress */}
+                  {/* Route progress bar */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <div>
@@ -118,7 +192,6 @@ export const GreenCorridorsView = () => {
                         <div className="text-xs">{corridor.destination}</div>
                       </div>
                     </div>
-
                     <div className="relative h-1.5 bg-(--color-3) rounded-full">
                       <div
                         className="absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-linear"
@@ -127,11 +200,14 @@ export const GreenCorridorsView = () => {
                       <div
                         className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 flex items-center justify-center z-10 transition-all duration-1000 ease-linear"
                         style={{ left: `${progress}%`, borderColor: isArrived ? '#22C55E' : themeColor }}
-                      >
-                        <Navigation2 size={8} color={isArrived ? '#22C55E' : themeColor} className="rotate-45" />
-                      </div>
+                      />
                     </div>
                   </div>
+                  
+                  {/* AI Ambulance Route Insights */}
+                  {!isArrived && corridor.vehicleId && (
+                    <AmbulanceRouteInsights vehicleId={corridor.vehicleId} />
+                  )}
                 </div>
 
                 {/* Path Nodes */}
@@ -142,34 +218,34 @@ export const GreenCorridorsView = () => {
                       {isArrived ? 'Adaptive Flow Restored' : 'Forced Green Override'}
                     </span>
                   </div>
-
                   <div className="flex flex-col gap-2">
                     {corridor.pathNodes && corridor.pathNodes.map((node, idx) => {
                       const nodeThreshold = (idx + 1) * (100 / corridor.pathNodes.length);
-                      const isPassed = progress > nodeThreshold;
-                      const isNext = progress <= nodeThreshold && progress > (idx * (100 / corridor.pathNodes.length));
-                      const nodeStatus = isArrived || isPassed ? 'PASSED' : isNext ? 'APPROACHING' : 'UPCOMING';
+                      const isPassed      = progress > nodeThreshold;
+                      const isNext        = progress <= nodeThreshold && progress > (idx * (100 / corridor.pathNodes.length));
+                      const nodeStatus    = isArrived || isPassed ? 'PASSED' : isNext ? 'APPROACHING' : 'UPCOMING';
 
                       return (
-                        <div key={idx} className={`flex items-center gap-3 p-2.5 rounded-sm border ${nodeStatus === 'APPROACHING' ? 'bg-(--color-5) border-(--color-6)' : 'bg-(--color-5) border-(--color-3)'}`}>
+                        <div
+                          key={idx}
+                          className={`flex items-center gap-3 p-2.5 rounded-sm ${nodeStatus === 'APPROACHING' ? 'bg-(--color-5) border border-(--color-6)' : 'bg-(--color-5)'}`}
+                        >
                           <div className="flex flex-col gap-0.5 bg-slate-800 p-1 rounded-sm">
                             <div className="w-2 h-2 rounded-full bg-slate-700" />
                             <div className="w-2 h-2 rounded-full bg-slate-700" />
                             <div className={`w-2 h-2 rounded-full ${nodeStatus === 'PASSED' ? 'bg-slate-700' : 'bg-green-500'}`} />
                           </div>
-
                           <div className="flex-1">
                             <div className="text-sm">{node.name}</div>
                             <div className="text-xs text-(--color-2)">
                               {nodeStatus === 'PASSED' ? 'Cleared' : nodeStatus === 'APPROACHING' ? 'Forced Green Active' : 'Pre-empted Green'}
                             </div>
                           </div>
-
                           <div>
                             {nodeStatus === 'PASSED' ? (
-                              <span className="text-xs text-(--color-2)">✓</span>
+                              <span className="text-sm text-(--color-2)">Passed</span>
                             ) : nodeStatus === 'APPROACHING' ? (
-                              <span className="text-xs text-(--color-6)">NEXT</span>
+                              <span className="text-xs text-(--color-6)">Next</span>
                             ) : (
                               <span className="text-xs text-(--color-2)">{Math.round(nodeThreshold - progress)}%</span>
                             )}

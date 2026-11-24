@@ -1,159 +1,188 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import { fetchAPI, getWebSocketUrl } from '../utils/api';
+
 
 const TrafficContext = createContext(null);
 
-import { INDIAN_CITIES, EMERGENCY_PRESETS, INITIAL_CORRIDORS, INITIAL_ALERTS, INITIAL_SUGGESTIONS } from '../data/dummyData';
-
 export const TrafficProvider = ({ children }) => {
-  // Active City & Location State (Default New Delhi)
-  const [activeCity, setActiveCity] = useState(INDIAN_CITIES[0]);
-  const [cityCenter, setCityCenter] = useState(INDIAN_CITIES[0].center);
-  const [userLocationDetected, setUserLocationDetected] = useState(false);
-  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  // --- Backend Data State ---
+  const [backendJunctions, setBackendJunctions] = useState([]);
+  const [selectedJunctionId, setSelectedJunctionId] = useState(null);
+  
+  // Real-time backend state
+  const [dashboardData, setDashboardData] = useState(null);
+  const wsRef = useRef(null);
 
-  // Layer Visibility Toggles (Shared across Topbar & Map Views)
+  // App Config from Backend
+  const [appConfig, setAppConfig] = useState(null);
+
+  // Active City & Location State
+  const [activeCity, setActiveCity] = useState(null);
+  const [cityCenter, setCityCenter] = useState(null);
+
+  // Layer Visibility Toggles
   const [showCameras, setShowCameras] = useState(true);
   const [showSignals, setShowSignals] = useState(true);
   const [showCorridor, setShowCorridor] = useState(true);
 
-  // Junction & Mode
-  const [selectedJunction, setSelectedJunction] = useState('J-04 Ring Road South (AIIMS)');
-  const [environment, setEnvironment] = useState('Prod');
+  // Junction & Simulation Mode
+  const [selectedJunction, setSelectedJunction] = useState(''); // Keep string for UI compat initially
   const [isLiveSimulating, setIsLiveSimulating] = useState(true);
 
-  // Cross-view mapping
-  const [activeMapElementId, setActiveMapElementId] = useState(null);
+  //  const [alerts, setAlerts] = useState([]);
 
-  // 4 Junction Approaches (Dynamic calculation based on density)
-  const [approaches, setApproaches] = useState({
-    North: { name: 'North Approach Corridor', vehicleCount: 42, capacity: 50, densityPct: 84.0, status: 'HIGH', currentLight: 'RED', greenSec: 35, avgSpeed: 18.2 },
-    South: { name: 'South Flyover Connector', vehicleCount: 21, capacity: 50, densityPct: 42.0, status: 'MEDIUM', currentLight: 'RED', greenSec: 25, avgSpeed: 34.0 },
-    East: { name: 'East Commercial Arterial', vehicleCount: 48, capacity: 50, densityPct: 96.0, status: 'CRITICAL', currentLight: 'GREEN', greenSec: 55, avgSpeed: 9.5 },
-    West: { name: 'West Residential Feeder', vehicleCount: 12, capacity: 50, densityPct: 24.0, status: 'LOW', currentLight: 'RED', greenSec: 15, avgSpeed: 42.1 }
-  });
-
-  // Automatically detect user location on initial load
-  const detectUserLocation = () => {
-    if (!navigator.geolocation) return;
-    setIsDetectingLocation(true);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-
-        // Find nearest predefined Indian city
-        let minDistance = Infinity;
-        let nearestCity = null;
-
-        INDIAN_CITIES.forEach((city) => {
-          const dist = Math.hypot(city.center.lat - latitude, city.center.lng - longitude);
-          if (dist < minDistance) {
-            minDistance = dist;
-            nearestCity = city;
-          }
-        });
-
-        // If user is within ~300km of a known city
-        if (nearestCity && minDistance < 3.5) {
-          setActiveCity({
-            ...nearestCity,
-            name: `${nearestCity.name} (Your Location)`
-          });
-          setCityCenter(nearestCity.center);
-          setSelectedJunction(nearestCity.junctions[0]);
-        } else {
-          // Custom Indian coordinate location
-          const customCity = {
-            id: 'live-user-location',
-            name: 'Live Detected Location',
-            state: 'India',
-            center: { lat: latitude, lng: longitude },
-            zoom: 14,
-            junctions: ['Local Central Junction']
-          };
-          setActiveCity(customCity);
-          setCityCenter({ lat: latitude, lng: longitude });
-          setSelectedJunction('Local Central Junction');
-        }
-
-        setUserLocationDetected(true);
-        setIsDetectingLocation(false);
-      },
-      (error) => {
-        console.warn('Geolocation access denied or unavailable. Using default city (New Delhi):', error);
-        setIsDetectingLocation(false);
-      },
-      { timeout: 8000, maximumAge: 60000 }
-    );
-  };
+  // Live Simulation / WebSockets State
+  const [liveAmbulances, setLiveAmbulances] = useState({}); // { id: { position, route, progress } }
+  const [liveMLStats, setLiveMLStats] = useState({}); // { device_id: { densityPct, activeVehicles, status } }
 
   useEffect(() => {
-    detectUserLocation();
+    // Setup WebSocket connection to backend
+    const ws = new WebSocket(getWebSocketUrl('/ws/live-dashboard'));
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'AMBULANCE_DISPATCH') {
+          setLiveAmbulances(prev => ({
+            ...prev,
+            [data.ambulance_id]: { 
+              route: data.route, 
+              position: data.route && data.route.length > 0 ? { lat: data.route[0][1], lng: data.route[0][0] } : null, 
+              status: data.status, 
+              progressPct: 0 
+            }
+          }));
+          window.alert(`🚑 Emergency Dispatch: ${data.ambulance_id} is en route. Green corridor activated.`);
+          setAlerts(prev => [{
+             id: `amb-disp-${Date.now()}`,
+             time: new Date().toLocaleTimeString(),
+             title: 'Emergency Vehicle Dispatched',
+             description: `Ambulance ${data.ambulance_id} is en route. Green Corridor tracking activated.`,
+             severity: 'CRITICAL',
+             type: 'GREEN_CORRIDOR',
+             author: 'Dispatch Center',
+             role: 'System',
+             feature: 'Emergency Response',
+             service: 'Green Corridor API',
+             tags: ['Emergency', 'Live']
+          }, ...prev].slice(0, 100));
+
+          setActiveCorridors(prev => [{
+            id: `corridor-${data.ambulance_id}`,
+            active: true,
+            status: 'IN_TRANSIT',
+            vehicleType: 'ambulance',
+            vehicleLabel: 'Critical Care',
+            vehicleId: data.ambulance_id,
+            patientSeverity: 'CRITICAL',
+            etaSeconds: 180,
+            countdownSeconds: 180,
+            destination: 'Nagpur Medical College',
+            origin: 'Dispatch Center',
+            distanceMeters: 4500,
+            routeCongestionPct: 0,
+            roadsideMessage: `Green corridor active for ${data.ambulance_id}`,
+            targetApproach: 'Priority Route',
+            originPos: data.route && data.route.length > 0 ? { lat: data.route[0][1], lng: data.route[0][0] } : null,
+            destPos: data.route && data.route.length > 0 ? { lat: data.route[data.route.length - 1][1], lng: data.route[data.route.length - 1][0] } : null,
+            pathPoints: data.route && data.route.length > 0 ? data.route.map(pt => ({ lat: pt[1], lng: pt[0] })) : null,
+            progressPct: 0
+          }, ...prev]);
+        } else if (data.type === 'AMBULANCE_MOVE') {
+          setLiveAmbulances(prev => {
+            if (!prev[data.ambulance_id]) return prev;
+            return {
+              ...prev,
+              [data.ambulance_id]: { ...prev[data.ambulance_id], position: data.position, progressPct: data.progressPct }
+            };
+          });
+          setActiveCorridors(prev => prev.map(c => {
+            if (c.vehicleId === data.ambulance_id) {
+              return { 
+                ...c, 
+                progressPct: data.progressPct,
+                countdownSeconds: Math.max(0, Math.floor(c.etaSeconds * (1 - (data.progressPct / 100))))
+              };
+            }
+            return c;
+          }));
+        } else if (data.type === 'AMBULANCE_ARRIVED') {
+          window.alert(`🏁 Ambulance ${data.ambulance_id} has arrived at destination!`);
+          setAlerts(prev => [{
+             id: `amb-arr-${Date.now()}`,
+             time: new Date().toLocaleTimeString(),
+             title: 'Emergency Vehicle Arrived',
+             description: `Ambulance ${data.ambulance_id} has successfully reached its destination.`,
+             severity: 'HEALTHY',
+             type: 'GREEN_CORRIDOR',
+             author: 'Dispatch Center',
+             role: 'System',
+             feature: 'Emergency Response',
+             service: 'Green Corridor API',
+             tags: ['Emergency', 'Arrived']
+          }, ...prev].slice(0, 100));
+          setTimeout(() => {
+            setLiveAmbulances(prev => {
+              const next = { ...prev };
+              delete next[data.ambulance_id];
+              return next;
+            });
+          }, 5000);
+        } else if (data.type === 'ML_UPDATE') {
+          setLiveMLStats(prev => ({
+            ...prev,
+            [data.device_id]: {
+              densityPct: data.densityPct,
+              activeVehicles: data.activeVehicles,
+              status: data.status,
+              message: data.message
+            }
+          }));
+        } else if (data.type === 'NEW_ALERT') {
+          setAlerts(prev => [data.alert, ...prev]);
+        }
+      } catch (e) {
+        console.error("WebSocket parse error", e);
+      }
+    };
+    
+    return () => {
+      if (ws.readyState === 1) { // OPEN
+        ws.close();
+      } else if (ws.readyState === 0) { // CONNECTING
+        ws.onopen = () => ws.close();
+      }
+    };
   }, []);
 
-  // Switch City Handler (Predefined or Custom Search)
-  const handleSelectCity = (cityObj) => {
-    setActiveCity(cityObj);
-    setCityCenter(cityObj.center);
-    if (cityObj.junctions && cityObj.junctions.length > 0) {
-      setSelectedJunction(cityObj.junctions[0]);
-    } else {
-      setSelectedJunction(`${cityObj.name} Central Junction`);
-    }
-  };
+  const [activeMapElementId, setActiveMapElementId] = useState(null);
 
-  // Search City by text query
-  const handleSearchCityQuery = async (queryText) => {
-    if (!queryText || !queryText.trim()) return;
-    const cleanQuery = queryText.trim().toLowerCase();
+  // 4 Junction Approaches
+  const [approaches, setApproaches] = useState(null);
 
-    // 1. Search in pre-built catalog
-    const matchedCatalogCity = INDIAN_CITIES.find(
-      (c) => c.name.toLowerCase().includes(cleanQuery) || c.state.toLowerCase().includes(cleanQuery)
-    );
-
-    if (matchedCatalogCity) {
-      handleSelectCity(matchedCatalogCity);
-      return matchedCatalogCity;
-    }
-
-    // 2. Geocode custom Indian city query via Nominatim / OpenStreetMap
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          queryText + ', India'
-        )}`
-      );
-      const data = await response.json();
-      if (data && data.length > 0) {
-        const topResult = data[0];
-        const newCity = {
-          id: `custom-${cleanQuery}`,
-          name: topResult.display_name.split(',')[0],
-          state: topResult.display_name.split(',')[1] || 'India',
-          center: { lat: parseFloat(topResult.lat), lng: parseFloat(topResult.lon) },
-          zoom: 14,
-          junctions: [`${topResult.display_name.split(',')[0]} Main Junction`]
-        };
-        handleSelectCity(newCity);
-        return newCity;
-      }
-    } catch (err) {
-      console.warn('Custom geocoding failed:', err);
-    }
-    return null;
-  };
-
-  // Switch Junction Handler
-  const handleSelectJunction = (junctionName) => {
-    setSelectedJunction(junctionName);
-  };
-
-  // Emergency & Green Corridor Triage State (Array for multiple corridors)
-  const [activeCorridors, setActiveCorridors] = useState(INITIAL_CORRIDORS);
+  // Emergency Green Corridors
+  const [activeCorridors, setActiveCorridors] = useState([]);
 
   // Master Alert List
-  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+  const [alerts, setAlerts] = useState([]);
+
+  // Fetch Config on Mount
+  useEffect(() => {
+    const initConfig = async () => {
+      try {
+        const config = await fetchAPI('/config');
+        setAppConfig(config);
+        setActiveCity(config.INDIAN_CITIES[0]);
+        setCityCenter(config.INDIAN_CITIES[0].center);
+        setApproaches(config.INITIAL_APPROACHES);
+        setAlerts(config.INITIAL_ALERTS || []);
+        setActiveCorridors(config.INITIAL_CORRIDORS || []);
+      } catch (err) {
+        console.error("Failed to load dashboard config:", err);
+      }
+    };
+    initConfig();
+  }, []);
 
   // Filters State
   const [filters, setFilters] = useState({
@@ -165,165 +194,268 @@ export const TrafficProvider = ({ children }) => {
     searchQuery: ''
   });
 
-  // Dynamic AI Suggestions
-  const [suggestions, setSuggestions] = useState(INITIAL_SUGGESTIONS);
+  const [suggestions, setSuggestions] = useState([]);
 
-  // Real-time tick engine
-  useEffect(() => {
-    if (!isLiveSimulating) return;
+  // ---------------------------------------------------------------------------
+  // Backend Integration: Fetch Junctions
+  // ---------------------------------------------------------------------------
+  const [rawEquipmentList, setRawEquipmentList] = useState([]);
 
-    const interval = setInterval(() => {
-      // Countdown for all active corridors
-      setActiveCorridors((prev) => {
-        if (prev.length === 0) return prev;
-        
-        return prev.map(corridor => {
-          if (corridor.countdownSeconds <= 0) {
-            return {
-              ...corridor,
-              countdownSeconds: 0,
-              status: 'ARRIVED',
-              roadsideMessage: `${corridor.vehicleLabel} arrived at destination.`
-            };
-          }
-          return {
-            ...corridor,
-            countdownSeconds: corridor.countdownSeconds - 1,
-            roadsideMessage: `${corridor.vehicleLabel} approaching. Keep left lane clear.`
-          };
-        });
-      });
-
-      // Realistic jitter for approaches
-      setApproaches((prev) => {
-        const jitter = (val) => Math.max(8, Math.min(50, val + Math.floor(Math.random() * 3) - 1));
-        const newNorth = jitter(prev.North.vehicleCount);
-        const newSouth = jitter(prev.South.vehicleCount);
-        const newWest = jitter(prev.West.vehicleCount);
-
+  // Merge live ML stats into equipment
+  const equipmentList = useMemo(() => {
+    if (!liveMLStats || Object.keys(liveMLStats).length === 0) return rawEquipmentList;
+    return rawEquipmentList.map(eq => {
+      const live = liveMLStats[eq.device_id];
+      if (live) {
         return {
-          ...prev,
-          North: { ...prev.North, vehicleCount: newNorth, densityPct: Math.round((newNorth / 50) * 100) },
-          South: { ...prev.South, vehicleCount: newSouth, densityPct: Math.round((newSouth / 50) * 100) },
-          West: { ...prev.West, vehicleCount: newWest, densityPct: Math.round((newWest / 50) * 100) }
+          ...eq,
+          status: live.status || eq.status,
+          live_vehicles: live.activeVehicles !== undefined ? live.activeVehicles : eq.live_vehicles,
+          density_pct: live.densityPct !== undefined ? live.densityPct : eq.density_pct,
+          ml_message: live.message
         };
-      });
-    }, 1000);
+      }
+      return eq;
+    });
+  }, [rawEquipmentList, liveMLStats]);
 
-    return () => clearInterval(interval);
-  }, [isLiveSimulating]);
-
-  // Trigger Emergency Corridor
-  const triggerEmergencyCorridor = (severity = 'CRITICAL', vehicleType = 'AMBULANCE') => {
-    const countdown = severity === 'CRITICAL' ? 120 : severity === 'SERIOUS' ? 90 : 60;
-    const triage = severity === 'CRITICAL' ? 'RED' : severity === 'SERIOUS' ? 'YELLOW' : 'GREEN';
-    const preset = EMERGENCY_PRESETS[vehicleType] || EMERGENCY_PRESETS.AMBULANCE;
-
-    // Build a unique ID and full route path with signals for the visualizer
-    const newCorridor = {
-      id: `CORR-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-      active: true,
-      status: 'IN_TRANSIT',
-      vehicleType: preset.vehicleType,
-      vehicleLabel: preset.vehicleLabel,
-      vehicleIcon: preset.vehicleIcon,
-      vehicleId: preset.vehicleId,
-      patientSeverity: severity,
-      triageLevel: triage,
-      etaSeconds: countdown,
-      countdownSeconds: countdown,
-      destination: `${activeCity?.name || 'Local'} Trauma Center`,
-      origin: `${activeCity?.name || 'Local'} Outer Ring`,
-      distanceMeters: preset.distanceMeters,
-      routeCongestionPct: 88.0,
-      roadsideMessage: `${preset.vehicleLabel} approaching. Keep left lane clear.`,
-      targetApproach: 'East Commercial Arterial',
-      // Mock path data for tracking
-      pathNodes: [
-        { name: 'Outer Ring Entry', status: 'PASSED', isGreen: true },
-        { name: 'Commercial Arterial', status: 'ACTIVE', isGreen: true },
-        { name: 'City Center Node', status: 'UPCOMING', isGreen: true },
-        { name: 'Hospital Approach', status: 'UPCOMING', isGreen: true }
-      ],
-      progressPct: 15
-    };
-
-    setActiveCorridors(prev => [newCorridor, ...prev]);
-
-    setApproaches((prev) => ({
-      North: { ...prev.North, currentLight: 'RED' },
-      South: { ...prev.South, currentLight: 'RED' },
-      West: { ...prev.West, currentLight: 'RED' },
-      East: { ...prev.East, currentLight: 'GREEN' }
-    }));
+  const loadJunctions = async () => {
+    try {
+      const data = await fetchAPI('/junctions');
+      setBackendJunctions(data);
+      if (data && data.length > 0) {
+        setSelectedJunctionId(data[0].id);
+        setSelectedJunction(data[0].name);
+      }
+    } catch (err) {
+      console.error("Failed to load backend junctions:", err);
+    }
   };
 
-  const removeEmergencyCorridor = (corridorId) => {
-    setActiveCorridors(prev => prev.filter(c => c.id !== corridorId));
+  useEffect(() => {
+    loadJunctions();
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Backend Integration: WebSockets for Dashboard
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!selectedJunctionId) return;
+
+    // Close existing connection
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
+    const wsUrl = getWebSocketUrl(`/simulation/live/${selectedJunctionId}`);
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+      console.log(`Connected to Live Dashboard for junction: ${selectedJunctionId}`);
+      ws.send("snapshot"); // Request initial data
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setDashboardData(data);
+        
+        // Map backend density data to frontend approaches
+        if (data.density && data.density.densities) {
+           const newApproaches = { ...approaches };
+           data.density.densities.forEach(d => {
+             const key = d.direction === "NORTH" ? "North" :
+                         d.direction === "SOUTH" ? "South" :
+                         d.direction === "EAST" ? "East" :
+                         d.direction === "WEST" ? "West" : null;
+             if (key && newApproaches[key]) {
+               newApproaches[key].vehicleCount = d.vehicle_count;
+               newApproaches[key].densityPct = Math.round(d.density * 100);
+               newApproaches[key].status = d.density_level;
+             }
+           });
+           setApproaches(newApproaches);
+        }
+
+        // Map backend alerts to frontend alerts
+        if (data.congestion_alerts) {
+           const mappedAlerts = data.congestion_alerts.map(a => ({
+             id: a.id,
+             time: new Date(a.created_at).toLocaleTimeString(),
+             title: a.message,
+             description: `Score: ${a.congestion_score}. Queue: ${a.queue_length}m. Speed: ${a.average_speed}km/h`,
+             severity: a.congestion_level === 'CRITICAL' ? 'CRITICAL' : a.congestion_level === 'WARNING' ? 'WARNING' : 'HEALTHY',
+             type: 'CONGESTION',
+             author: 'Backend AI',
+             role: 'System',
+             feature: 'Density Tracking',
+             service: 'Backend API',
+             tags: ['Backend', a.direction]
+           }));
+           setAlerts(prev => [...mappedAlerts, ...prev].slice(0, 100));
+        }
+
+      } catch (err) {
+        console.error("Error parsing websocket message", err);
+      }
+    };
+
+    ws.onerror = (err) => console.error("WebSocket error:", err);
+    wsRef.current = ws;
+
+    return () => {
+      if (ws.readyState === 1) { // OPEN
+        ws.close();
+      } else if (ws.readyState === 0) { // CONNECTING
+        ws.onopen = () => ws.close();
+      }
+    };
+  }, [selectedJunctionId]);
+
+
+
+
+  const handleSelectJunction = (juncName) => {
+    setSelectedJunction(juncName);
+    const backendMatch = backendJunctions.find(j => j.name === juncName);
+    if (backendMatch) {
+      setSelectedJunctionId(backendMatch.id);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Backend Integration: Green Corridor Actions
+  // ---------------------------------------------------------------------------
+  const triggerEmergencyCorridor = async (preset) => {
+    if (!selectedJunctionId || !appConfig) return;
+    const vehiclePreset = appConfig.EMERGENCY_PRESETS[preset?.vehicleType] || appConfig.EMERGENCY_PRESETS.AMBULANCE;
+    
+    try {
+       const payload = {
+         ambulance_id: vehiclePreset.vehicleId,
+         route: [selectedJunctionId],
+         upcoming_junctions: [{ junction_id: selectedJunctionId, priority_direction: "EAST" }],
+         destination: vehiclePreset.destination
+       };
+       const data = await fetchAPI('/green-corridor/activate', { method: 'POST', body: JSON.stringify(payload) });
+       
+       const newCorridor = {
+         id: data.id,
+         active: true,
+         status: 'IN_TRANSIT',
+         vehicleType: vehiclePreset.vehicleType,
+         vehicleLabel: vehiclePreset.vehicleLabel,
+         vehicleIcon: vehiclePreset.vehicleIcon,
+         vehicleId: vehiclePreset.vehicleId,
+         patientSeverity: 'CRITICAL',
+         etaSeconds: data.etaSeconds || 120,
+         countdownSeconds: data.etaSeconds || 120,
+         destination: payload.destination,
+         origin: 'Backend Activated',
+         distanceMeters: data.distanceMeters || vehiclePreset.distanceMeters,
+         routeCongestionPct: 0,
+         roadsideMessage: `Green corridor active for ${vehiclePreset.vehicleId}`,
+         targetApproach: 'East Commercial Arterial',
+         originPos: data.originPos || { lat: cityCenter.lat - 0.0080, lng: cityCenter.lng - 0.0012 },
+         destPos: data.destPos || { lat: cityCenter.lat + 0.0006, lng: cityCenter.lng + 0.0008 },
+         pathNodes: data.pathNodes || appConfig.DEFAULT_PATH_NODES,
+         progressPct: 15
+       };
+       setActiveCorridors(prev => [newCorridor, ...prev]);
+    } catch (err) {
+       console.error("Failed to trigger corridor on backend:", err);
+    }
+  };
+
+  const removeEmergencyCorridor = async (corridorId) => {
+    try {
+      await fetchAPI(`/green-corridor/deactivate/${corridorId}`, { method: 'POST' });
+      setActiveCorridors((prev) => prev.filter((c) => c.id !== corridorId));
+    } catch (err) {
+      console.error("Failed to deactivate corridor:", err);
+      // Fallback UI remove
+      setActiveCorridors((prev) => prev.filter((c) => c.id !== corridorId));
+    }
   };
 
   const applySuggestion = (suggestionId) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.id === suggestionId ? { ...s, applied: true } : s))
-    );
+    setSuggestions((prev) => prev.map((s) => (s.id === suggestionId ? { ...s, applied: true } : s)));
   };
 
   const clearAllFilters = () => {
-    setFilters({
-      userRole: 'All users',
-      featureStatus: 'All features',
-      serviceStatus: 'All service',
-      tags: [],
-      severity: 'All',
-      searchQuery: ''
-    });
+    setFilters({ userRole: 'All users', featureStatus: 'All features', serviceStatus: 'All service', tags: [], severity: 'All', searchQuery: '' });
   };
 
-  const activeFilterCount =
-    (filters.userRole !== 'All users' ? 1 : 0) +
-    (filters.featureStatus !== 'All features' ? 1 : 0) +
-    (filters.serviceStatus !== 'All service' ? 1 : 0) +
-    (filters.tags && filters.tags.length > 0 ? filters.tags.length : 0) +
-    (filters.severity !== 'All' ? 1 : 0) +
-    (filters.searchQuery ? 1 : 0);
+  // Helper method for the Debug Panel
+  const runSimulation = async (scenario = "BUSY") => {
+    if (!selectedJunctionId) return;
+    try {
+      await fetchAPI('/simulation/traffic', { 
+        method: 'POST', 
+        body: JSON.stringify({ junction_id: selectedJunctionId, scenario }) 
+      });
+      // Tell websocket to refresh
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send("snapshot");
+      }
+    } catch (err) {
+      console.error("Simulation failed:", err);
+    }
+  };
+
+  if (!appConfig) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-(--color-4) text-(--color-2)">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-(--color-3) border-t-(--color-6) rounded-full animate-spin" />
+          <div>Loading system...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TrafficContext.Provider
       value={{
+        appConfig,
+        backendJunctions,
+        selectedJunctionId,
+        setSelectedJunctionId,
+        dashboardData,
+        runSimulation,
+        
         activeCity,
         cityCenter,
-        handleSelectCity,
-        handleSearchCityQuery,
-        detectUserLocation,
-        userLocationDetected,
-        isDetectingLocation,
+        
         selectedJunction,
         setSelectedJunction: handleSelectJunction,
-        environment,
-        setEnvironment,
         isLiveSimulating,
         setIsLiveSimulating,
+        
         approaches,
         setApproaches,
+        showCameras, setShowCameras,
+        showSignals, setShowSignals,
+        showCorridor, setShowCorridor,
+        activeMapElementId, setActiveMapElementId,
+        
         activeCorridors,
         triggerEmergencyCorridor,
         removeEmergencyCorridor,
+        // Live Simulation Values
+        liveAmbulances,
+        liveMLStats,
+        
         alerts,
         setAlerts,
+        
         suggestions,
         applySuggestion,
+        setSuggestions,
+        
         filters,
         setFilters,
-        clearAllFilters,
-        activeFilterCount,
-        showCameras,
-        setShowCameras,
-        showSignals,
-        setShowSignals,
-        showCorridor,
-        setShowCorridor,
-        activeMapElementId,
-        setActiveMapElementId
+        clearAllFilters
       }}
     >
       {children}
@@ -333,8 +465,6 @@ export const TrafficProvider = ({ children }) => {
 
 export const useTraffic = () => {
   const context = useContext(TrafficContext);
-  if (!context) {
-    throw new Error('useTraffic must be used within a TrafficProvider');
-  }
+  if (!context) throw new Error('useTraffic must be used within a TrafficProvider');
   return context;
 };

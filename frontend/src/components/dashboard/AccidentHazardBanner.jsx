@@ -1,12 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertOctagon, ShieldAlert, Siren, RotateCcw, ArrowRight } from 'lucide-react';
+import { AlertOctagon, Siren } from 'lucide-react';
 import { useTraffic } from '../../context/TrafficContext';
+import { getEmergencyFromCorridors } from '../../utils/trafficUtils';
 
 export const AccidentHazardBanner = ({ onNavigateGuards }) => {
   const navigate = useNavigate();
   const { activeCorridors } = useTraffic();
-  const emergency = activeCorridors && activeCorridors.length > 0 ? activeCorridors[0] : { active: false };
+  const emergency = getEmergencyFromCorridors(activeCorridors);
 
   const handleInspectGuards = () => {
     if (onNavigateGuards) {
@@ -17,22 +18,18 @@ export const AccidentHazardBanner = ({ onNavigateGuards }) => {
   };
 
   return (
-    <div
-      className="overflow-hidden rounded-sm px-4 py-3 text-(--color-5) flex items-center justify-between flex-wrap gap-4 bg-[#7F1D1D]"
-    >
+    <div className="overflow-hidden rounded-sm px-4 py-3 text-(--color-5) flex items-center justify-between flex-wrap gap-4 bg-[#7F1D1D]">
       <div className="flex items-center gap-3.5 flex-[1_1_500px]">
         {emergency.active ? <Siren size={24} color="#FFFFFF" /> : <AlertOctagon size={24} color="#FFFFFF" />}
         <div>
           <div className="flex items-center gap-2.5 mb-0.5">
-            <span
-              className="text-red-600"
-            >
+            <span className="text-red-600">
               {emergency.active ? 'Green Corridor Active' : 'Accident Risk Interception'}
             </span>
           </div>
           <div className="text-sm">
             {emergency.active
-              ? `${emergency.vehicleIcon || ''} ${emergency.vehicleLabel || 'Emergency Vehicle'} ${emergency.vehicleId || 'DL-01-AMB-889'} en route to ${emergency.destination || emergency.hospital || ''}.`
+              ? `${emergency.vehicleLabel || 'Emergency Vehicle'} ${emergency.vehicleId || ''} en route to ${emergency.destination || emergency.hospital || ''}.`
               : ''}
           </div>
         </div>
