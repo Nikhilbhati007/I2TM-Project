@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚦 SARATHI - AI-Driven, Vision-Zero Traffic Intelligence
+# 🚦 SARATHI - AI-Driven,Vision-Zero Traffic Intelligence
 **Unified Adaptive Signal Intelligence, Patient-Triage Emergency Corridors & Vision-Zero Crash Interception Engine**
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org)
